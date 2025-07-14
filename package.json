@@ -1,0 +1,62 @@
+{
+  "name": "cesium-suroc-kit",
+  "private": false,
+  "version": "1.0.0",
+  "description": "一个由 Suroc 维护的轻量级 Cesium 快速开发工具集，封装了常用函数与操作，旨在提升 CesiumJS 引擎下的开发效率与代码简洁性",
+  "main": "./dist/index.js",
+  "common": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "typings": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./package": "./package.json"
+  },
+  "files": [
+    "dist",
+    "types"
+  ],
+  "scripts": {
+    "build:dev": "set NODE_ENV=development&&rollup -c",
+    "build:pro": "set NODE_ENV=production&&rollup -c",
+    "toPublish": "npm publish --registry=https://registry.npmjs.org --access=public",
+    "test": "echo \"No test specified\" && exit 0",
+    "build:umd": "set NODE_ENV=development&&set FORMAT=umd&&rollup -c",
+    "prepare:test": "npm run build:dev && npm run build:umd && cd cesium-suroc-kit && npm install",
+    "test:node": "cd cesium-suroc-kit && node src/index.js",
+    "test:browser": "npm run prepare:test && start cesium-suroc-kit/public/index.html",
+    "dev": "npm run prepare:test && npm run test:node"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/npm-package-template"
+  },
+  "keywords": [
+    "npm",
+    "package",
+    "template",
+    "typescript",
+    "rollup",
+    "css",
+    "scss"
+  ],
+  "author": "Suroc",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "autoprefixer": "^10.4.17",
+    "babel-loader": "^9.2.1",
+    "cssnano": "^6.0.5",
+    "node-sass": "^9.0.0",
+    "postcss": "^8.4.35",
+    "rollup": "^4.25.0",
+    "rollup-plugin-postcss": "^4.0.2",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "sass": "^1.71.1",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "cesium-suroc-kit",
+  "version": "1.0.0",
+  "description": "一个由 Suroc 维护的轻量级 Cesium 快速开发工具集，封装了常用函数与操作，旨在提升 CesiumJS 引擎下的开发效率与代码简洁性",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "test"
+  ],
+  "author": "Suroc",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "cesium-suroc-kit": "^1.0.0",
+    "npm-package-template": "file:../"
+  }
+}

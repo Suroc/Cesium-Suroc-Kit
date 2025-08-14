@@ -1,10 +1,53 @@
 /*
  * @Author: Suroc
  * @Date: 2025-01-11 11:12:56
- * @LastEditTime: 2025-04-28 15:20:57
+ * @LastEditTime: 2025-08-14 15:14:00
  * @Description: 
  */
 const Object = {}
+
+
+/**
+ * @description 添加Token
+ * @param {token} AccessToken
+ */
+Object.initAccessToken = (token) => {
+  Cesium.Ion.defaultAccessToken = token
+}
+
+/**
+ * @description 添加Token
+ * @param {options} options
+ * @param {viewerId} options.viewerId  // 容器ID
+ * @param {config} options.config  // 容器ID  
+ */
+Object.initViewer = (options) => {
+  let viewer = new Cesium.Viewer(options.viewerId, options.config ? options.config : {
+    //自动播放
+    shouldAnimate: true,
+    //放大镜图标，查找位置工具，查找到之后会将镜头对准找到的地址，默认使用bing地图
+    geocoder: false,
+    //房子图标，视角返回初始位置
+    homeButton: false,
+    //经纬网图标，选择视角的模式，有三种：3D，2D，哥伦布视图（2.5D)
+    sceneModePicker: false,
+    //问号图标，导航帮助按钮，显示默认的地图控制帮助
+    navigationHelpButton: false,
+    //动画器件，显示当前时间，允许跳转特定时间
+    animation: true,
+    //时间轴
+    timeline: true,
+    //全屏图标，全屏按钮
+    fullscreenButton: false,
+    //默认点击
+    selectionIndicator: false,
+    infoBox: false,
+    useBrowserRecommendedResolution: false,
+    //离线地图
+    baseLayerPicker: false
+  })
+  return viewer
+}
 
 /**
  * @description 开启地形深度检测

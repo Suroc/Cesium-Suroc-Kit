@@ -29,6 +29,12 @@ npm run build:dev
 # 生产环境构建（压缩，不带sourcemap）
 npm run build:pro
 
+# 生产构建（压缩+混淆）
+npm run build:all
+
+# 生产构建（压缩+混淆+二次加密）
+npm run build:secure
+
 # 构建特定格式（如UMD格式，用于浏览器中使用）
 npm run build:umd
 ```
@@ -101,21 +107,21 @@ npm run toPublish
 
 ## package.json 关键字段说明
 
-| 字段 | 描述 |
-|------|------|
-| `name` | NPM包的名称，请使用唯一的名称 |
-| `version` | 版本号，遵循语义化版本规范 |
-| `description` | 包的简短描述 |
-| `main` | CommonJS格式的入口文件路径 |
-| `module` | ES Module格式的入口文件路径 |
-| `typings` | TypeScript类型定义文件路径 |
-| `exports` | 提供更精确的模块导出映射 |
-| `files` | 发布到NPM仓库的文件列表 |
-| `scripts` | 定义npm命令脚本 |
-| `keywords` | 包的关键词，有助于在npm搜索时被找到 |
-| `author` | 包的作者信息 |
-| `license` | 开源许可证类型 |
-| `devDependencies` | 开发时依赖的包列表 |
+| 字段              | 描述                                |
+| ----------------- | ----------------------------------- |
+| `name`            | NPM包的名称，请使用唯一的名称       |
+| `version`         | 版本号，遵循语义化版本规范          |
+| `description`     | 包的简短描述                        |
+| `main`            | CommonJS格式的入口文件路径          |
+| `module`          | ES Module格式的入口文件路径         |
+| `typings`         | TypeScript类型定义文件路径          |
+| `exports`         | 提供更精确的模块导出映射            |
+| `files`           | 发布到NPM仓库的文件列表             |
+| `scripts`         | 定义npm命令脚本                     |
+| `keywords`        | 包的关键词，有助于在npm搜索时被找到 |
+| `author`          | 包的作者信息                        |
+| `license`         | 开源许可证类型                      |
+| `devDependencies` | 开发时依赖的包列表                  |
 
 ## 构建配置说明
 

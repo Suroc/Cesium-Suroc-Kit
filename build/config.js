@@ -1,3 +1,9 @@
+/*
+ * @Author: Suroc
+ * @Date: 2025-07-14 15:16:25
+ * @LastEditTime: 2025-08-18 10:10:26
+ * @Description: config.js
+ */
 /**
  * 打包配置文件
  * 集中管理所有可配置选项
@@ -15,7 +21,7 @@ const pkg = require('../package.json');
  * - umd (Universal Module Definition): 通用模块定义，同时支持浏览器、Node.js和AMD加载器
  * - iife (Immediately Invoked Function Expression): 自执行函数，适合作为<script>标签直接在浏览器中使用
  */
-exports.OUTPUT_FORMATS = process.env.FORMAT 
+exports.OUTPUT_FORMATS = process.env.FORMAT
     ? [process.env.FORMAT] // 如果设置了FORMAT环境变量，只输出指定格式
     : ['cjs', 'es'];       // 否则使用默认值
 
@@ -36,6 +42,12 @@ exports.GLOBAL_NAME = pkg.name.replace(/-([a-z])/g, (_, letter) => letter.toUppe
  * @type {string[]}
  */
 exports.EXTERNAL = [];
+
+/**
+ * 是否将依赖全部进行打包
+ * @type {boolean}
+ */
+exports.BUNDLE_ALL = process.env.BUNDLE_ALL === 'true';
 
 /**
  * 入口文件路径
@@ -84,7 +96,7 @@ exports.BANNER = [
  * @param {string} format 打包格式
  * @returns {string} 输出文件路径
  */
-exports.getOutputFile = function(format) {
+exports.getOutputFile = function (format) {
     switch (format) {
         case 'cjs':
             return pkg.common || './dist/index.js';
@@ -105,4 +117,10 @@ exports.getOutputFile = function(format) {
  * 是否为生产环境
  * @type {boolean}
  */
-exports.IS_PRODUCTION = process.env.NODE_ENV === 'production'; 
+exports.IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+/**
+ * 是否启用二次混淆
+ * @type {boolean}
+ */
+OBFUSCATE: process.env.OBFUSCATE === 'true'

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CesiumKit Token 生成器 & 解密器</title>
+    <style>
+      section {
+        width: 500px;
+        margin: 10px auto;
+      }
+      input {
+        width: 100%;
+        height: 30px;
+        line-height: 30px;
+        margin-bottom: 10px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 60px;
+      }
+      button {
+        margin-bottom: 10px;
+        width: 100%;
+        height: 35px;
+      }
+      #decoded {
+        width: 100%;
+        background: #f6f8fa;
+        padding: 10px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <section>
+      <h2>CesiumKit Token 生成器 & 解密器</h2>
+    </section>
+
+    <section>
+      <label>IP 地址<br /><input id="ip" type="text" value="192.168.20.52:3006" /></label>
+    </section>
+
+    <section>
+      <label>过期时间 (YYYY-MM-DD HH:MM:SS)<br /><input id="expire" type="text" value="2075-12-31 15:59:59" /></label>
+    </section>
+
+    <section>
+      <label>固定字符串<br /><input id="fixed" type="text" value="^creatunion.aseem.SurocKit&" /></label>
+    </section>
+
+    <section>
+      <button id="generate">生成 Token</button>
+      <textarea id="token"></textarea>
+    </section>
+
+    <section>
+      <button id="decode">解密 Token</button>
+      <pre id="decoded"></pre>
+    </section>
+
+    <script>
+      // --- Hash ---
+      async function sha256(str) {
+        const encoder = new TextEncoder();
+        const buf = await crypto.subtle.digest('SHA-256', encoder.encode(str));
+        return Array.from(new Uint8Array(buf))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      // --- Time helpers ---
+      function parseDateTimeToTimestamp(str) {
+        const [y, m, d, h, min, s] = str.split(/[\s:-]/).map(Number);
+        return new Date(y, m - 1, d, h, min, s).getTime();
+      }
+      function formatTimestamp(ts) {
+        const d = new Date(ts);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+
+      // --- Generate token ---
+      document.getElementById('generate').addEventListener('click', async () => {
+        try {
+          const ip = document.getElementById('ip').value.trim();
+          if (!ip) throw new Error('IP 不能为空');
+
+          const fixed = document.getElementById('fixed').value.trim();
+          const expireStr = document.getElementById('expire').value.trim();
+          const expireTs = parseDateTimeToTimestamp(expireStr);
+          if (isNaN(expireTs)) throw new Error('过期时间格式不正确');
+
+          // payload 字段顺序：ip | fixed | expireTs
+          const payload = `${ip}|${fixed}|${expireTs}`;
+          const hash = await sha256(payload);
+          const token = btoa(`${hash}|${payload}`);
+          document.getElementById('token').value = token;
+        } catch (err) {
+          alert('生成失败：' + err.message);
+        }
+      });
+
+      // --- Decode token ---
+      document.getElementById('decode').addEventListener('click', async () => {
+        const token = document.getElementById('token').value.trim();
+        if (!token) return alert('请先生成或输入 token');
+
+        try {
+          const decoded = atob(token);
+          const firstPipe = decoded.indexOf('|');
+          if (firstPipe === -1) throw new Error('Token 格式错误');
+
+          const hashStored = decoded.substring(0, firstPipe);
+          const payload = decoded.substring(firstPipe + 1);
+
+          // payload: ip | fixed | expireTs
+          const parts = payload.split('|');
+          if (parts.length !== 3) throw new Error('Token payload 格式错误');
+
+          const [ip, fixed, expireTsStr] = parts;
+          const expireTs = Number(expireTsStr);
+          if (isNaN(expireTs)) throw new Error('过期时间无效');
+
+          // 校验 hash
+          const hashNow = await sha256(payload);
+          if (hashNow !== hashStored) throw new Error('Token 校验失败');
+
+          // 过期检查
+          if (Date.now() > expireTs) throw new Error('Token 已过期');
+
+          document.getElementById('decoded').textContent = JSON.stringify({ ip, fixed, expire: formatTimestamp(expireTs) }, null, 2);
+        } catch (err) {
+          document.getElementById('decoded').textContent = '解密失败: ' + err.message;
+        }
+      });
+    </script>
+  </body>
+</html>

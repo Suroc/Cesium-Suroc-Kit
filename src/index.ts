@@ -1,101 +1,88 @@
 /*
  * @Author: Suroc
  * @Date: 2025-01-11 11:12:56
- * @LastEditTime: 2025-08-18 10:32:11
- * @Description:  NPM包入口文件
+ * @LastEditTime: 2025-08-18 16:37:26
+ * @Description:  NPM包入口文件（仅保留 IP / 固定字符串 / 过期时间 三个字段校验）
  */
-import graphic from './suroc/models/graphic';
-import algorithm from './suroc/models/algorithm';
+
+// import graphic from './suroc/models/graphic';
+// import algorithm from './suroc/models/algorithm';
 import setttings from './suroc/models/setttings';
-import DrawTool from './suroc/models/drawTool';
-import Creatunion from './suroc/situation/creatunion_v1.1.1_VUE';
-import SurocSGP4 from './suroc/situation/SurocSGP4_v1.0.2';
+// import DrawTool from './suroc/models/drawTool';
+// import Creatunion from './suroc/situation/creatunion_v1.1.1_VUE';
+// import SurocSGP4 from './suroc/situation/SurocSGP4_v1.0.2';
 
 let isInitialized = false;
+const FIXED_STRING = '^creatunion.aseem.SurocKit&';
 
-// 异步 SHA256
-async function sha256(str: string): Promise<string> {
-  if (typeof window !== 'undefined' && window.crypto?.subtle) {
-    const encoder = new TextEncoder();
-    const buf = await window.crypto.subtle.digest('SHA-256', encoder.encode(str));
-    return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  } else {
-    const crypto = require('crypto');
-    return crypto.createHash('sha256').update(str).digest('hex');
-  }
-}
+// 初始化 token 并返回模块
+export function init(token: string) {
+  try {
+    const decoded = atob(token);
+    const parts = decoded.split('|');
 
-// 获取唯一标识
-async function getMachineId(): Promise<string> {
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    // Node.js
-    const os = require('os');
-    const networkInterfaces = os.networkInterfaces();
-    const macs = Object.values(networkInterfaces)
-      .flat()
-      .filter(Boolean)
-      .map((i) => (i as any).mac)
-      .join('-');
-    const cpu = os.cpus()[0].model;
-    return sha256(cpu + macs);
-  } else if (typeof window !== 'undefined') {
-    // 浏览器
-    const ua = navigator.userAgent;
-    const screenInfo = `${screen.width}x${screen.height}`;
-    return sha256(ua + screenInfo);
-  } else {
-    throw new Error('Unsupported environment');
-  }
-}
+    if (parts.length !== 4) throw new Error('Token 格式错误');
 
-// 初始化
-export async function init(token: string) {
-  const machineId = await getMachineId();
-  const tokenHash = await sha256(token);
+    const [hashIgnored, tokenIp, fixed, expireTsStr] = parts; // hash字段忽略
+    const expireTs = Number(expireTsStr);
+    if (isNaN(expireTs)) throw new Error('过期时间无效');
 
-  if (tokenHash !== machineId) {
-    throw new Error('Invalid token for this machine');
-  }
+    // 固定字符串检查
+    if (fixed !== FIXED_STRING) throw new Error('固定字符不匹配');
 
-  isInitialized = true;
-  console.log('CesiumUtils initialized successfully');
-}
+    // 过期检查
+    if (Date.now() > expireTs) throw new Error('Token 已过期');
 
-// 确保初始化
-function ensureInit() {
-  if (!isInitialized) {
-    throw new Error('Please call init(token) before using CesiumUtils methods');
-  }
-}
-
-// 包装模块函数
-function wrapModule(module: any) {
-  const wrapped: any = {};
-  Object.keys(module).forEach((key) => {
-    const value = module[key];
-    if (typeof value === 'function') {
-      wrapped[key] = async (...args: any[]) => {
-        ensureInit();
-        return value(...args);
-      };
-    } else {
-      wrapped[key] = value;
+    // URL IP 与端口验证
+    let urlIp = '';
+    let urlPort = '';
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      urlIp = url.hostname;
+      urlPort = url.port; // 没有端口则为空字符串
     }
-  });
-  return wrapped;
+
+    // token 可能带端口
+    let tIp = tokenIp;
+    let tPort = '';
+    if (tokenIp.includes(':')) [tIp, tPort] = tokenIp.split(':');
+
+    if (urlPort) {
+      if (urlIp !== tIp || urlPort !== tPort) throw new Error(`Token IP/端口 与 URL 不匹配: ${tokenIp} !== ${urlIp}:${urlPort}`);
+    } else {
+      if (urlIp !== tIp) throw new Error(`Token IP 与 URL IP 不匹配: ${tokenIp} !== ${urlIp}`);
+    }
+
+    isInitialized = true;
+
+    // 包装模块，防止未初始化调用
+    function wrapModule(module: any) {
+      const wrapped: any = {};
+      Object.keys(module).forEach((key) => {
+        const value = module[key];
+        if (typeof value === 'function') {
+          wrapped[key] = (...args: any[]) => {
+            if (!isInitialized) throw new Error('请先调用 init(token)');
+            return value(...args);
+          };
+        } else {
+          wrapped[key] = value;
+        }
+      });
+      return wrapped;
+    }
+
+    return {
+      ...wrapModule(setttings),
+      // ...wrapModule(graphic),
+      // ...wrapModule(algorithm),
+      // ...wrapModule(DrawTool),
+      // ...wrapModule(Creatunion),
+      // ...wrapModule(SurocSGP4),
+    };
+  } catch (err: any) {
+    throw new Error('Token 验证失败: ' + err.message);
+  }
 }
 
-// 最终导出
-const CesiumUtils = {
-  init,
-  graphic: wrapModule(graphic),
-  algorithm: wrapModule(algorithm),
-  setttings: wrapModule(setttings),
-  DrawTool: wrapModule(DrawTool),
-  Creatunion: wrapModule(Creatunion),
-  SurocSGP4: wrapModule(SurocSGP4),
-};
-
-export default CesiumUtils;
+export default { init };

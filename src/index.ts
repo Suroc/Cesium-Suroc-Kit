@@ -1,22 +1,18 @@
 /*
  * @Author: Suroc
  * @Date: 2025-01-11 11:12:56
- * @LastEditTime: 2025-08-18 16:37:26
+ * @LastEditTime: 2025-08-20 10:00:00
  * @Description:  NPM包入口文件（仅保留 IP / 固定字符串 / 过期时间 三个字段校验）
  */
 
-// import graphic from './suroc/models/graphic';
-// import algorithm from './suroc/models/algorithm';
-import setttings from './suroc/models/setttings';
-// import DrawTool from './suroc/models/drawTool';
-// import Creatunion from './suroc/situation/creatunion_v1.1.1_VUE';
-// import SurocSGP4 from './suroc/situation/SurocSGP4_v1.0.2';
+import settings from './settings';
+// import drawtool from './drawtool';
 
 let isInitialized = false;
 const FIXED_STRING = '^creatunion.aseem.SurocKit&';
 
 // 初始化 token 并返回模块
-export function init(token: string) {
+let init = (token: string) => {
   try {
     const decoded = atob(token);
     const parts = decoded.split('|');
@@ -73,16 +69,13 @@ export function init(token: string) {
     }
 
     return {
-      ...wrapModule(setttings),
-      // ...wrapModule(graphic),
-      // ...wrapModule(algorithm),
-      // ...wrapModule(DrawTool),
-      // ...wrapModule(Creatunion),
-      // ...wrapModule(SurocSGP4),
+      ...wrapModule(settings),
+      // ...wrapModule(drawtool),
     };
   } catch (err: any) {
     throw new Error('Token 验证失败: ' + err.message);
   }
 }
+const SurocKit = { init };
 
-export default { init };
+export default SurocKit;

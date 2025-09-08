@@ -47,7 +47,7 @@ exports.EXTERNAL = [];
  * 是否将依赖全部进行打包
  * @type {boolean}
  */
-exports.BUNDLE_ALL = process.env.BUNDLE_ALL === 'true';
+exports.BUNDLE_ALL = true; // 始终打包所有依赖，包括@turf/turf
 
 /**
  * 入口文件路径
@@ -123,4 +123,4 @@ exports.IS_PRODUCTION = process.env.NODE_ENV === 'production';
  * 是否启用二次混淆
  * @type {boolean}
  */
-OBFUSCATE: process.env.OBFUSCATE === 'true'
+exports.OBFUSCATE = process.env.OBFUSCATE === 'true'

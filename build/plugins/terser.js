@@ -23,10 +23,7 @@ function createTerserPlugin() {
             drop_debugger: true,  // 去掉 debugger
             passes: 2             // 多次优化，提高压缩率
         },
-        mangle: {
-            toplevel: true,       // 混淆顶层变量和函数名
-            properties: true      // 混淆对象属性名
-        },
+        mangle: false,  // 完全禁用变量名混淆，避免覆盖混淆器设置的变量名
         format: {
             comments: function (node, comment) {
                 // 保留banner注释
@@ -36,4 +33,4 @@ function createTerserPlugin() {
     });
 }
 
-module.exports = createTerserPlugin; 
+module.exports = createTerserPlugin;

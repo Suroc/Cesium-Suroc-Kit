@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build:dev": "cross-env NODE_ENV=development rollup -c",
-    "build:pro": "cross-env NODE_ENV=production rollup -c",
+    "build:pro": "cross-env NODE_ENV=production OBFUSCATE=true rollup -c",
     "build:secure": "cross-env NODE_ENV=production OBFUSCATE=true rollup -c",
     "build:umd": "cross-env NODE_ENV=production FORMAT=umd rollup -c",
     "build:all": "cross-env NODE_ENV=production BUNDLE_ALL=true rollup -c",

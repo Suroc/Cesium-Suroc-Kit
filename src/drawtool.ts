@@ -6,14 +6,12 @@
  */
 // 声明Cesium类型
 declare const Cesium: any;
-// 导入Cesium和turf库
-import * as turf from '@turf/turf';
-
 // 定义接口
 interface DrawConfig {
   borderColor: Cesium.Color;
   borderWidth: number;
   material: Cesium.Color;
+  turf?: any; // turf库实例，用于绘制圆形平面
 }
 
 interface PointPosition {
@@ -69,6 +67,7 @@ class DrawTool {
       borderColor: config?.borderColor || Cesium.Color.fromCssColorString('#FFFF00'),
       borderWidth: config?.borderWidth || 1,
       material: config?.material || Cesium.Color.fromCssColorString('#FFFF00').withAlpha(0.3),
+      turf: config?.turf,
     };
     this.callback = callback || null;
     /**存贮绘制的数据 坐标 */
@@ -131,8 +130,10 @@ class DrawTool {
    * @param {number} [lon] - 经度（可选）
    * @param {number} [lat] - 纬度（可选）
    * @param {number} [alt] - 高度（可选）
+   * @param {Cesium.Color} [pointColor] - 点颜色（可选）
+   * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
    */
-  public drawPoint(lon?: number, lat?: number, alt?: number): void {
+  public drawPoint(lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color): void {
     this.removeEntity();
 
     const id: any = new Date().getTime().toString();
@@ -149,9 +150,9 @@ class DrawTool {
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition!),
         point: {
-          color: new Cesium.ColorMaterialProperty(this.config.material),
+          color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
           pixelSize: new Cesium.ConstantProperty(12),
-          outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
+          outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
           outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
         } as any
       } as any);
@@ -190,9 +191,9 @@ class DrawTool {
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition!),
         point: {
-          color: new Cesium.ColorMaterialProperty(this.config.material),
+          color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
           pixelSize: new Cesium.ConstantProperty(12),
-          outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
+          outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
           outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
         } as any
       } as any);
@@ -217,9 +218,10 @@ class DrawTool {
 
   /**
    * @description: 绘制线段
+   * @param {Cesium.Color} [lineColor] - 线条颜色（可选）
    * @author: Suroc
    */
-  public drawLine(): void {
+  public drawLine(lineColor?: Cesium.Color): void {
     this.removeEntity();
 
     this.showMouseTip('左键点击添加拐点，右键完成线段');
@@ -250,7 +252,7 @@ class DrawTool {
         if (!this.drawObj) {
           _polygonEntity.polyline = new Cesium.PolylineGraphics({
             width: new Cesium.ConstantProperty(this.config.borderWidth),
-            material: new Cesium.ColorMaterialProperty(this.config.borderColor),
+            material: new Cesium.ColorMaterialProperty(lineColor || this.config.borderColor),
 
           });
           _polygonEntity.polyline.positions = new Cesium.CallbackProperty(() => positions, false);
@@ -296,9 +298,11 @@ class DrawTool {
 
   /**
    * @description: 绘制矩形区域
+   * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
+   * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
    * @author: Suroc
    */
-  public drawRectangle(): void {
+  public drawRectangle(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
     this.removeEntity();
 
     this.showMouseTip('左键点击设置起点，移动鼠标调整，右键完成');
@@ -328,13 +332,13 @@ class DrawTool {
               positions: Cesium.Cartesian3.fromDegreesArray(westSouthEastNorth)
             }), false),
             height: new Cesium.ConstantProperty(0),
-            material: new Cesium.ColorMaterialProperty(this.config.material),
+            material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
             fill: true,
             show: new Cesium.ConstantProperty(true)
           } as any,
           polyline: {
             positions: new Cesium.CallbackProperty(() => Cesium.Cartesian3.fromDegreesArray(westSouthEastNorth), false),
-            material: new Cesium.ColorMaterialProperty(this.config.borderColor),
+            material: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
             width: new Cesium.ConstantProperty(this.config.borderWidth),
             zIndex: new Cesium.ConstantProperty(1)
           } as any,
@@ -382,9 +386,11 @@ class DrawTool {
 
   /**
    * @description: 绘制圆形区域
+   * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
+   * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
    * @author: Suroc
    */
-  public drawCircle(): void {
+  public drawCircle(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
     this.removeEntity();
 
     this.showMouseTip('左键点击设置圆心，移动鼠标调整半径，右键完成');
@@ -413,8 +419,8 @@ class DrawTool {
 
             height: new Cesium.ConstantProperty(0),
             outline: new Cesium.ConstantProperty(true),
-            material: new Cesium.ColorMaterialProperty(this.config.material),
-            outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
+            material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
+            outlineColor: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
             outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth),
             semiMajorAxis: new Cesium.CallbackProperty(() => radius, false),
             semiMinorAxis: new Cesium.CallbackProperty(() => radius, false)
@@ -454,18 +460,24 @@ class DrawTool {
    * @description: 绘制多边形区域（圆）
    * @param {number} radius - 半径
    * @param {number} steps - 步长
+   * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
+   * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
    * @author: Suroc
    */
-  public drawCirclePlane(radius: number, steps: number): void {
+  public drawCirclePlane(radius: number, steps: number, fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
     this.removeEntity();
 
     this.showMouseTip('左键点击设置圆心，右键完成');
+
+    // 参数验证和默认值设置
+    const validRadius = typeof radius === 'number' && !isNaN(radius) && radius > 0 ? radius : 1;
+    const validSteps = typeof steps === 'number' && !isNaN(steps) && steps > 3 ? steps : 64;
 
     const id: any = new Date().getTime();
     let positions: Array<{ lon: number; lat: number; }> = [];
     let lngLat: [number, number] = [0, 0];
     let polygon: Cesium.Cartesian3[] = [];
-    const options = { steps, units: "kilometers" as const, properties: { foo: "bar" } };
+    const options = { steps: validSteps, units: "kilometers" as const, properties: { foo: "bar" } };
 
     this.handler?.setInputAction((click: { position: Cesium.Cartesian2 }) => {
       if (click && click.position) {
@@ -477,11 +489,36 @@ class DrawTool {
         let cartographic = Cesium.Cartographic.fromCartesian(cartesian, this.viewer.scene.globe.ellipsoid, new Cesium.Cartographic());
         let lon = Cesium.Math.toDegrees(cartographic.longitude);
         let lat = Cesium.Math.toDegrees(cartographic.latitude);
+
+        // 确保坐标是有效的数字
+        if (typeof lon !== 'number' || isNaN(lon) || typeof lat !== 'number' || isNaN(lat)) {
+          console.warn('无效的坐标值，无法绘制圆形平面');
+          return;
+        }
+
         lngLat = [lon, lat];
 
-        let turfPos = turf.circle(lngLat, radius, options);
-        let convertedCoords = turfPos.geometry.coordinates[0];
-        positions = convertedCoords.map(coord => ({ lon: coord[0], lat: coord[1] }));
+        // 检查是否提供了turf库
+        if (!this.config.turf) {
+          console.warn('turf库未在初始化时传入，无法绘制圆形平面。请在创建DrawTool实例时通过config.turf传入turf库。');
+          return;
+        }
+
+        try {
+          let turfPos = this.config.turf.circle(lngLat, validRadius, options);
+          if (!turfPos || !turfPos.geometry || !turfPos.geometry.coordinates || !Array.isArray(turfPos.geometry.coordinates[0])) {
+            console.warn('turf.circle返回的数据格式不正确');
+            return;
+          }
+
+          let convertedCoords = turfPos.geometry.coordinates[0];
+          positions = convertedCoords
+            .filter((coord: any) => Array.isArray(coord) && coord.length >= 2 && !isNaN(coord[0]) && !isNaN(coord[1]))
+            .map((coord: [number, number]) => ({ lon: coord[0], lat: coord[1] }));
+        } catch (error) {
+          console.error('绘制圆形平面时出错:', error);
+          return;
+        }
 
         if (positions.length > 2) {
           polygon = positions.map(coord => Cesium.Cartesian3.fromDegrees(coord.lon, coord.lat, 0));
@@ -491,13 +528,13 @@ class DrawTool {
             name: 'planeSelf',
             polyline: {
               width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
-              material: new Cesium.ColorMaterialProperty(this.config.borderColor),
+              material: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
 
               positions: polygon as any
             } as any,
             polygon: {
               hierarchy: new Cesium.PolygonHierarchy(polygon),
-              material: new Cesium.ColorMaterialProperty(this.config.material)
+              material: new Cesium.ColorMaterialProperty(fillColor || this.config.material)
             } as any
           } as any);
         }
@@ -520,9 +557,11 @@ class DrawTool {
 
   /**
    * @description: 自定义区域绘制
+   * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
+   * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
    * @author: Suroc
    */
-  public drawPlane(): void {
+  public drawPlane(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
     this.removeEntity();
     const id = Date.now().toString();
     const ellipsoid = this.viewer.scene.globe.ellipsoid;
@@ -558,7 +597,7 @@ class DrawTool {
       name: 'planeSelf',
       polyline: {
         width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
-        material: new Cesium.ColorMaterialProperty(this.config.borderColor),
+        material: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
         positions: dynamicPositions,
         arcType: new Cesium.ConstantProperty(Cesium.ArcType.NONE),
         classificationType: new Cesium.ConstantProperty(Cesium.ClassificationType.BOTH)
@@ -567,7 +606,7 @@ class DrawTool {
         hierarchy: new Cesium.CallbackProperty(() => {
           return new Cesium.PolygonHierarchy(positions);
         }, false),
-        material: new Cesium.ColorMaterialProperty(this.config.material),
+        material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
         show: new Cesium.ConstantProperty(true),
         fill: true,
         outline: new Cesium.ConstantProperty(false)

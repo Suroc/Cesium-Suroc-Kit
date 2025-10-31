@@ -42,12 +42,12 @@ function createConfig(options) {
             createCssPlugin(),
             // TypeScript编译插件
             createTypescriptPlugin(options),
-            // Terser压缩插件
+            // 二次混淆（可选）- 移到terser之前
+            createObfuscatorPlugin(options),
+            // Terser压缩插件 - 最后应用，只压缩不混淆名称
             createTerserPlugin(),
-            // 二次混淆（可选）
-            createObfuscatorPlugin(),
         ].filter(Boolean)
     };
 }
 
-module.exports = createConfig; 
+module.exports = createConfig;

@@ -118,7 +118,7 @@ Object.setMultiplier = (val: number = 1) => {
 Object.sceneChange = (val: number) => {
   const cameraController = viewer.scene.screenSpaceCameraController;
 
-  // 切换前清理
+  // --- 统一清理 ---
   if (postUpdateHandler && isPostUpdateAdded) {
     viewer.scene.postUpdate.removeEventListener(postUpdateHandler);
     isPostUpdateAdded = false;
@@ -128,8 +128,12 @@ Object.sceneChange = (val: number) => {
     cameraChangedHandler = null;
   }
 
+  // 默认非惯性系设置
+  cameraController.minimumZoomDistance = 1.0;
+  cameraController.maximumZoomDistance = Number.POSITIVE_INFINITY;
+
   if (val === 1) {
-    // 惯性系
+    // --- 惯性系 ---
     viewer.scene.mode = Cesium.SceneMode.SCENE3D;
 
     postUpdateHandler = (scene: Cesium.Scene, time: Cesium.JulianDate) => {
@@ -142,39 +146,25 @@ Object.sceneChange = (val: number) => {
         camera.lookAtTransform(transform, offset);
       }
     };
-
     viewer.scene.postUpdate.addEventListener(postUpdateHandler);
     isPostUpdateAdded = true;
 
+    cameraController.minimumZoomDistance = 10;
+    cameraController.maximumZoomDistance = 1e21;
+
     cameraChangedHandler = () => {
-      if (viewer.trackedEntity) {
-        if (postUpdateHandler && isPostUpdateAdded) {
-          viewer.scene.postUpdate.removeEventListener(postUpdateHandler);
-          isPostUpdateAdded = false;
-        }
-        cameraController.minimumZoomDistance = 0;
-      } else {
-        if (postUpdateHandler && !isPostUpdateAdded) {
-          viewer.scene.postUpdate.addEventListener(postUpdateHandler);
-          isPostUpdateAdded = true;
-        }
-        cameraController.minimumZoomDistance = 1.0e7;
-      }
+      cameraController.minimumZoomDistance = viewer.trackedEntity ? 0 : 1.0e7;
     };
     viewer.scene.camera.changed.addEventListener(cameraChangedHandler);
 
   } else if (val === 2) {
-    // 地固系
+    // --- 地固系 ---
     viewer.scene.mode = Cesium.SceneMode.SCENE3D;
-    cameraController.minimumZoomDistance = 10;
-    cameraController.maximumZoomDistance = 1e21;
-
   } else if (val === 3) {
-    // Columbus View
+    // --- Columbus View ---
     viewer.scene.mode = Cesium.SceneMode.COLUMBUS_VIEW;
-
   } else if (val === 4) {
-    // 2D 模式
+    // --- 2D 模式 ---
     viewer.scene.mode = Cesium.SceneMode.SCENE2D;
   }
 };

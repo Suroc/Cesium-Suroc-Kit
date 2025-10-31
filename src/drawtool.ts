@@ -7,7 +7,6 @@
 // 声明Cesium类型
 declare const Cesium: any;
 // 导入Cesium和turf库
-// import * as Cesium from 'cesium';
 import * as turf from '@turf/turf';
 
 // 定义接口
@@ -54,7 +53,7 @@ interface InfoDetail {
   planeSelf: PlanePosition | [];
 }
 
-class drawTool {
+class DrawTool {
   private viewer: Cesium.Viewer;
   private config: DrawConfig;
   private callback: ((data: any) => void) | null;
@@ -148,16 +147,16 @@ class drawTool {
       this.drawObj = this.viewer.entities.add({
         id,
         name: 'point',
-        position: lastPosition,
+        position: new Cesium.ConstantProperty(lastPosition!),
         point: {
           color: new Cesium.ColorMaterialProperty(this.config.material),
           pixelSize: new Cesium.ConstantProperty(12),
           outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
           outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-        }
-      });
+        } as any
+      } as any);
 
-      this.infoDetail.point = { id, position: codeInfo };
+      (this.infoDetail.point as any) = { position: codeInfo };
       if (this.callback) {
         this.callback(this.infoDetail.point);
       }
@@ -189,14 +188,14 @@ class drawTool {
       this.drawObj = this.viewer.entities.add({
         id,
         name: 'point',
-        position: lastPosition,
+        position: new Cesium.ConstantProperty(lastPosition!),
         point: {
-          color: this.config.material,
+          color: new Cesium.ColorMaterialProperty(this.config.material),
           pixelSize: new Cesium.ConstantProperty(12),
           outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
           outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-        }
-      });
+        } as any
+      } as any);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
     this.handler?.setInputAction(() => {
@@ -204,7 +203,7 @@ class drawTool {
       this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
 
       if (lastPosition) {
-        this.infoDetail.point = { id, position: codeInfo };
+        (this.infoDetail.point as any) = { position: codeInfo };
 
         if (this.callback) {
           this.callback(this.infoDetail.point);
@@ -252,7 +251,7 @@ class drawTool {
           _polygonEntity.polyline = new Cesium.PolylineGraphics({
             width: new Cesium.ConstantProperty(this.config.borderWidth),
             material: new Cesium.ColorMaterialProperty(this.config.borderColor),
-            clampToGround: new Cesium.ConstantProperty(false)
+
           });
           _polygonEntity.polyline.positions = new Cesium.CallbackProperty(() => positions, false);
           _polygonEntity.name = 'line';
@@ -296,124 +295,6 @@ class drawTool {
   }
 
   /**
-   * @description: 绘制矩形区域(优化版)
-   * @author: Suroc
-   */
-  public drawRect(): void {
-    this.removeEntity();
-
-    this.showMouseTip('左键点击设置起点，移动鼠标调整，右键完成');
-
-    let pointsArr: number[] = [];
-    let _selfPoints: Cesium.Cartographic[] = [];
-    let _selfRect: Cesium.Rectangle | null = null;
-    const id: any = new Date().getTime();
-    let tempPosition: Cesium.Cartesian3 | null;
-    const _self = this;
-
-    // 鼠标左键单击画点
-    this.handler?.setInputAction((click: { position: Cesium.Cartesian2 }) => {
-      tempPosition = _self.getPointFromWindowPoint(click.position);
-      if (tempPosition) {
-        if (_selfPoints.length === 0) {
-          let cartesian = this.viewer.camera.pickEllipsoid(click.position, this.viewer.scene.globe.ellipsoid);
-          if (!cartesian) return;
-          let cartographic = Cesium.Cartographic.fromCartesian(cartesian, this.viewer.scene.globe.ellipsoid, new Cesium.Cartographic());
-          let lng1 = Cesium.Math.toDegrees(cartographic.longitude);
-          let lat1 = Cesium.Math.toDegrees(cartographic.latitude);
-
-          pointsArr.push(lng1);
-          pointsArr.push(lat1);
-          _selfPoints.push(_self.viewer.scene.globe.ellipsoid.cartesianToCartographic(tempPosition));
-
-          _selfRect = Cesium.Rectangle.fromCartographicArray(_selfPoints);
-          _selfRect.east += 0.000001;
-          _selfRect.north += 0.000001;
-
-          this.drawObj = _self.viewer.entities.add({
-            id,
-            rectangle: {
-              coordinates: _selfRect,
-              material: new Cesium.ColorMaterialProperty(this.config.material),
-              outline: new Cesium.ConstantProperty(true),
-              outlineWidth: new Cesium.ConstantProperty(10),
-              outlineColor: this.config.borderColor,
-              height: new Cesium.ConstantProperty(0)
-            }
-          });
-        }
-      }
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
-    // 鼠标移动
-    this.handler?.setInputAction((movement: { endPosition: Cesium.Cartesian2 }) => {
-      if (_selfPoints.length === 0) return;
-
-      let moveEndPosition = _self.getPointFromWindowPoint(movement.endPosition);
-      if (moveEndPosition) {
-        let cartesian = this.viewer.camera.pickEllipsoid(movement.endPosition, this.viewer.scene.globe.ellipsoid);
-        if (!cartesian) return;
-        let cartographic = Cesium.Cartographic.fromCartesian(cartesian, this.viewer.scene.globe.ellipsoid, new Cesium.Cartographic());
-        let lng1 = Cesium.Math.toDegrees(cartographic.longitude);
-        let lat1 = Cesium.Math.toDegrees(cartographic.latitude);
-
-        pointsArr[2] = lng1;
-        pointsArr[3] = lat1;
-        _selfPoints[1] = _self.viewer.scene.globe.ellipsoid.cartesianToCartographic(moveEndPosition);
-
-        _selfRect = Cesium.Rectangle.fromCartographicArray(_selfPoints);
-        if (_selfRect.west === _selfRect.east) _selfRect.east += 0.000001;
-        if (_selfRect.south === _selfRect.north) _selfRect.north += 0.000001;
-
-        // 修复可选链赋值问题
-        if (this.drawObj && this.drawObj.rectangle) {
-          this.drawObj.rectangle.coordinates = _selfRect;
-        }
-      }
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-    this.handler?.setInputAction((click: { position: Cesium.Cartesian2 }) => {
-      tempPosition = _self.getPointFromWindowPoint(click.position);
-      if (tempPosition && _selfPoints.length > 0) {
-        this.handler?.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-        this.handler?.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
-      }
-      this.infoDetail.rectangle = {
-        id,
-        positions: [
-          { lon: pointsArr[0], lat: pointsArr[1] },
-          { lon: pointsArr[2], lat: pointsArr[1] },
-          { lon: pointsArr[2], lat: pointsArr[3] },
-          { lon: pointsArr[0], lat: pointsArr[3] }
-        ]
-      };
-      this.handler?.destroy();
-      this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
-
-      if (this.callback) {
-        this.callback(this.infoDetail.rectangle);
-      }
-
-      // 移除鼠标提示
-      this.removeMouseTip();
-    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-  }
-
-  /**
-   * @description: 验证选择的点在球面上
-   * @param {Cesium.Cartesian2} point - 屏幕坐标点
-   * @return {Cesium.Cartesian3 | null} - 三维坐标点或null
-   */
-  private getPointFromWindowPoint(point: Cesium.Cartesian2): Cesium.Cartesian3 | null {
-    if (this.viewer.scene.terrainProvider.constructor.name === "EllipsoidTerrainProvider") {
-      return this.viewer.camera.pickEllipsoid(point, this.viewer.scene.globe.ellipsoid);
-    } else {
-      const ray = this.viewer.scene.camera.getPickRay(point);
-      return this.viewer.scene.globe.pick(ray, this.viewer.scene);
-    }
-  }
-
-  /**
    * @description: 绘制矩形区域
    * @author: Suroc
    */
@@ -449,15 +330,15 @@ class drawTool {
             height: new Cesium.ConstantProperty(0),
             material: new Cesium.ColorMaterialProperty(this.config.material),
             fill: true,
-            show: true,
-          },
+            show: new Cesium.ConstantProperty(true)
+          } as any,
           polyline: {
             positions: new Cesium.CallbackProperty(() => Cesium.Cartesian3.fromDegreesArray(westSouthEastNorth), false),
             material: new Cesium.ColorMaterialProperty(this.config.borderColor),
             width: new Cesium.ConstantProperty(this.config.borderWidth),
-            zIndex: 1,
-          },
-        });
+            zIndex: new Cesium.ConstantProperty(1)
+          } as any,
+        } as any);
 
         this.handler?.setInputAction((move: { endPosition: Cesium.Cartesian2 }) => {
           if (move && move.endPosition) {
@@ -529,16 +410,16 @@ class drawTool {
           name: 'circle',
           id,
           ellipse: {
-            width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
+
             height: new Cesium.ConstantProperty(0),
             outline: new Cesium.ConstantProperty(true),
             material: new Cesium.ColorMaterialProperty(this.config.material),
-            outlineColor: this.config.borderColor,
+            outlineColor: new Cesium.ColorMaterialProperty(this.config.borderColor),
             outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth),
             semiMajorAxis: new Cesium.CallbackProperty(() => radius, false),
             semiMinorAxis: new Cesium.CallbackProperty(() => radius, false)
-          }
-        });
+          } as any
+        } as any);
 
         this.handler?.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
@@ -611,15 +492,14 @@ class drawTool {
             polyline: {
               width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
               material: new Cesium.ColorMaterialProperty(this.config.borderColor),
-              clampToGround: new Cesium.ConstantProperty(false),
+
               positions: polygon as any
             } as any,
             polygon: {
               hierarchy: new Cesium.PolygonHierarchy(polygon),
-              material: new Cesium.ColorMaterialProperty(this.config.material),
-              clampToGround: new Cesium.ConstantProperty(false),
-            }
-          });
+              material: new Cesium.ColorMaterialProperty(this.config.material)
+            } as any
+          } as any);
         }
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -680,7 +560,6 @@ class drawTool {
         width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
         material: new Cesium.ColorMaterialProperty(this.config.borderColor),
         positions: dynamicPositions,
-        clampToGround: new Cesium.ConstantProperty(false),
         arcType: new Cesium.ConstantProperty(Cesium.ArcType.NONE),
         classificationType: new Cesium.ConstantProperty(Cesium.ClassificationType.BOTH)
       } as any,
@@ -691,10 +570,9 @@ class drawTool {
         material: new Cesium.ColorMaterialProperty(this.config.material),
         show: new Cesium.ConstantProperty(true),
         fill: true,
-        outline: new Cesium.ConstantProperty(false),
-        clampToGround: new Cesium.ConstantProperty(false)
-      }
-    });
+        outline: new Cesium.ConstantProperty(false)
+      } as any
+    } as any);
 
     // 鼠标左键点击，添加点
     this.handler?.setInputAction((movement: { position: Cesium.Cartesian2 }) => {
@@ -792,10 +670,4 @@ class drawTool {
   }
 }
 
-const Object: {
-  drawTool: typeof drawTool;
-} = {} as any;
-
-Object.drawTool = drawTool;
-
-export default Object;
+export default DrawTool;

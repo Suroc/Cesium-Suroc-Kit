@@ -132,7 +132,7 @@ class DrawTool {
      * @param {Cesium.Color} [pointColor] - 点颜色（可选）
      * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
      */
-    drawPoint(id, lon, lat, alt, pointColor, outlineColor, length = 3000, topRadius = 1800) {
+    drawPoint(id, lon, lat, alt, pointColor, outlineColor, length = 30000, topRadius = 18000) {
         this.removeEntity();
         // 如果未提供id，则生成默认id
         const entityId = id || new Date().getTime().toString();
@@ -140,46 +140,30 @@ class DrawTool {
         let codeInfo = { lon: 0, lat: 0, height: 0 };
         // 动态旋转圆锥体实体参数
         let start = 0;
-        const Yoffset = 0;
         // 参数验证：用户传了有效经纬度和高度，直接绘制
         if (lon !== undefined && lat !== undefined && alt !== undefined &&
             typeof lon === 'number' && typeof lat === 'number' && typeof alt === 'number') {
-            lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+            lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt + length);
             codeInfo = { lon, lat, height: alt };
             this.drawObj = this.viewer.entities.add({
                 id: entityId,
                 name: 'point',
                 position: new Cesium.ConstantProperty(lastPosition),
-                point: {
-                    color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
-                    pixelSize: new Cesium.ConstantProperty(12),
-                    outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
-                    outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-                },
                 orientation: new Cesium.CallbackProperty(() => {
                     start += 1;
                     const roll = Cesium.Math.toRadians(start);
                     Cesium.Math.zeroToTwoPi(roll);
-                    return Cesium.Transforms.headingPitchRollQuaternion(Cesium.Cartesian3.fromDegrees(lon, lat, alt), new Cesium.HeadingPitchRoll(roll, 0, 0.0));
+                    return Cesium.Transforms.headingPitchRollQuaternion(Cesium.Cartesian3.fromDegrees(lon, lat, alt + length), new Cesium.HeadingPitchRoll(roll, 0, 0.0));
                 }, false),
-                cylinder: new Cesium.CallbackProperty(() => {
-                    // 获取相机位置
-                    const cameraPosition = this.viewer.camera.position;
-                    // 计算相机到点的距离
-                    const distance = Cesium.Cartesian3.distance(cameraPosition, lastPosition);
-                    // 根据距离动态调整大小（远大近小）
-                    // 基础大小 * 距离缩放因子，添加最小值避免太小
-                    const scaleFactor = Math.max(0.5, distance / 5000000); // 调整除数以改变缩放敏感度
-                    return {
-                        length: length * scaleFactor,
-                        topRadius: topRadius * scaleFactor,
-                        bottomRadius: 0,
-                        slices: 4,
-                        outline: true,
-                        outlineColor: pointColor || Cesium.Color.LIME,
-                        material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
-                    };
-                }, false)
+                cylinder: {
+                    length: length,
+                    topRadius: topRadius,
+                    bottomRadius: 0,
+                    slices: 4,
+                    outline: true,
+                    outlineColor: pointColor || Cesium.Color.LIME,
+                    material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
+                }
             });
             this.infoDetail.point = { position: codeInfo };
             if (this.callback) {
@@ -199,7 +183,7 @@ class DrawTool {
             const lon = Cesium.Math.toDegrees(cartographic.longitude);
             const lat = Cesium.Math.toDegrees(cartographic.latitude);
             const height = cartographic.height;
-            lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+            lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, height + length);
             codeInfo = { lon, lat, height };
             if (this.drawObj) {
                 this.viewer.entities.remove(this.drawObj);
@@ -208,36 +192,21 @@ class DrawTool {
                 id: entityId,
                 name: 'point',
                 position: new Cesium.ConstantProperty(lastPosition),
-                point: {
-                    color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
-                    pixelSize: new Cesium.ConstantProperty(12),
-                    outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
-                    outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-                },
                 orientation: new Cesium.CallbackProperty(() => {
                     start += 1;
                     const roll = Cesium.Math.toRadians(start);
                     Cesium.Math.zeroToTwoPi(roll);
-                    return Cesium.Transforms.headingPitchRollQuaternion(Cesium.Cartesian3.fromDegrees(lon, lat, height), new Cesium.HeadingPitchRoll(roll, 0, 0.0));
+                    return Cesium.Transforms.headingPitchRollQuaternion(Cesium.Cartesian3.fromDegrees(lon, lat, height + length), new Cesium.HeadingPitchRoll(roll, 0, 0.0));
                 }, false),
-                cylinder: new Cesium.CallbackProperty(() => {
-                    // 获取相机位置
-                    const cameraPosition = this.viewer.camera.position;
-                    // 计算相机到点的距离
-                    const distance = Cesium.Cartesian3.distance(cameraPosition, lastPosition);
-                    // 根据距离动态调整大小（远大近小）
-                    // 基础大小 * 距离缩放因子，添加最小值避免太小
-                    const scaleFactor = Math.max(0.5, distance / 5000000); // 调整除数以改变缩放敏感度
-                    return {
-                        length: length * scaleFactor,
-                        topRadius: topRadius * scaleFactor,
-                        bottomRadius: 0,
-                        slices: 4,
-                        outline: true,
-                        outlineColor: pointColor || Cesium.Color.LIME,
-                        material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
-                    };
-                }, false)
+                cylinder: {
+                    length: length,
+                    topRadius: topRadius,
+                    bottomRadius: 0,
+                    slices: 4,
+                    outline: true,
+                    outlineColor: pointColor || Cesium.Color.LIME,
+                    material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
+                }
             });
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
         this.handler?.setInputAction(() => {

@@ -208,7 +208,7 @@ class DrawTool {
    * @param {Cesium.Color} [pointColor] - 点颜色（可选）
    * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
    */
-  public drawPoint(id?: string, lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 30000, topRadius: number = 18000): void {
+  public drawPoint(id?: string, lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 300000, topRadius: number = 180000): void {
     this.removeEntity();
 
     // 如果未提供id，则生成默认id
@@ -221,7 +221,7 @@ class DrawTool {
     // 参数验证：用户传了有效经纬度和高度，直接绘制
     if (lon !== undefined && lat !== undefined && alt !== undefined &&
       typeof lon === 'number' && typeof lat === 'number' && typeof alt === 'number') {
-      lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+      lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt + (length / 2));
       codeInfo = { lon, lat, height: alt };
 
       this.drawObj = this.viewer.entities.add({
@@ -233,7 +233,7 @@ class DrawTool {
           const roll = Cesium.Math.toRadians(start);
           Cesium.Math.zeroToTwoPi(roll);
           return Cesium.Transforms.headingPitchRollQuaternion(
-            Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt + (length / 2)),
             new Cesium.HeadingPitchRoll(roll, 0, 0.0)
           );
         }, false),
@@ -270,7 +270,7 @@ class DrawTool {
       const lat = Cesium.Math.toDegrees(cartographic.latitude);
       const height = cartographic.height;
 
-      lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+      lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, height + (length / 2));
       codeInfo = { lon, lat, height };
 
       if (this.drawObj) {
@@ -280,13 +280,13 @@ class DrawTool {
       this.drawObj = this.viewer.entities.add({
         id: entityId,
         name: 'point',
-        position: new Cesium.ConstantProperty(lastPosition!),
+        position: new Cesium.ConstantProperty(lastPosition),
         orientation: new Cesium.CallbackProperty(() => {
           start += 1;
           const roll = Cesium.Math.toRadians(start);
           Cesium.Math.zeroToTwoPi(roll);
           return Cesium.Transforms.headingPitchRollQuaternion(
-            Cesium.Cartesian3.fromDegrees(lon, lat, height),
+            Cesium.Cartesian3.fromDegrees(lon, lat, height + (length / 2)),
             new Cesium.HeadingPitchRoll(roll, 0, 0.0)
           );
         }, false),

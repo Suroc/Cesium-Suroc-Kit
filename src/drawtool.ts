@@ -2,10 +2,32 @@
  * @Author: Suroc
  * @Date: 2024-05-06 10:20:58
  * @LastEditTime: 2025-08-21 11:00:00
- * @Description: 绘制工具
+ * @Description: Cesium绘制工具 - 提供点、线、矩形、圆形、多边形等绘制功能
  */
+
 // 声明Cesium类型
-declare const Cesium: any;
+interface Cesium {
+  Viewer: any;
+  Color: any;
+  Cartesian3: any;
+  ScreenSpaceEventHandler: any;
+  ScreenSpaceEventType: any;
+  ColorMaterialProperty: any;
+  ConstantProperty: any;
+  CallbackProperty: any;
+  PolygonHierarchy: any;
+  Entity: any;
+  PolylineGraphics: any;
+  Math: any;
+  Cartographic: any;
+  Transforms: any;
+  HeadingPitchRoll: any;
+  HeadingPitchRollQuaternion: any;
+  ArcType: any;
+  ClassificationType: any;
+}
+
+declare const Cesium: Cesium;
 // 定义接口
 interface DrawConfig {
   borderColor: Cesium.Color;
@@ -60,6 +82,10 @@ class DrawTool {
   private drawObj: Cesium.Entity | null;
 
   constructor(viewer: Cesium.Viewer, callback?: ((data: any) => void), config?: Partial<DrawConfig>) {
+    if (!viewer) {
+      throw new Error('Cesium Viewer instance is required');
+    }
+
     /**cesium实例对象 */
     this.viewer = viewer;
     /**绘制要素的相关配置*/
@@ -70,7 +96,7 @@ class DrawTool {
       turf: config?.turf,
     };
     this.callback = callback || null;
-    /**存贮绘制的数据 坐标 */
+    /**存储绘制的数据坐标 */
     this.infoDetail = { point: [], line: [], rectangle: [], circle: [], planeSelf: [] };
     this.handler = null;
     this.drawObj = null;
@@ -126,6 +152,55 @@ class DrawTool {
   }
 
   /**
+    * @description: 移除实体对象和清理资源
+    * @author: Suroc
+    */
+  private removeEntity(): void {
+    this.removeMouseTip();
+
+    // 移除绘制对象
+    if (this.drawObj) {
+      this.viewer.entities.remove(this.drawObj);
+      this.drawObj = null;
+    }
+
+    // 销毁并重新创建事件处理器
+    if (this.handler) {
+      try {
+        (this.handler as any).destroy();
+      } catch (e) {
+        console.error('Error destroying handler:', e);
+      }
+      this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+    }
+  }
+
+  /**
+   * @description: 安全地销毁事件处理器
+   */
+  private safelyDestroyHandler(): void {
+    if (this.handler && typeof (this.handler as any).isDestroyed !== 'function' || !(this.handler as any).isDestroyed) {
+      try {
+        if (typeof (this.handler as any).destroy === 'function') {
+          (this.handler as any).destroy();
+        }
+      } catch (e) {
+        console.warn('Failed to destroy handler:', e);
+      }
+    }
+    this.handler = null;
+  }
+
+  /**
+   * @description: 返回绘制数据
+   * @return {InfoDetail} - 绘制数据
+   * @author: Suroc
+   */
+  public backInfoDetail(): InfoDetail {
+    return this.infoDetail;
+  }
+
+  /**
    * @description: 绘制点数据（支持手动输入）
    * @param {number} [lon] - 经度（可选）
    * @param {number} [lat] - 纬度（可选）
@@ -133,28 +208,44 @@ class DrawTool {
    * @param {Cesium.Color} [pointColor] - 点颜色（可选）
    * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
    */
-  public drawPoint(lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color): void {
+  public drawPoint(id?: string, lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 30000, topRadius: number = 18000): void {
     this.removeEntity();
 
-    const id: any = new Date().getTime().toString();
+    // 如果未提供id，则生成默认id
+    const entityId = id || new Date().getTime().toString();
     let lastPosition: Cesium.Cartesian3 | null = null;
     let codeInfo: PointPosition = { lon: 0, lat: 0, height: 0 };
+    // 动态旋转圆锥体实体参数
+    let start = 0;
 
-    // 用户传了 lon/lat/alt，直接绘制
-    if (typeof lon === 'number' && typeof lat === 'number' && typeof alt === 'number') {
+    // 参数验证：用户传了有效经纬度和高度，直接绘制
+    if (lon !== undefined && lat !== undefined && alt !== undefined &&
+      typeof lon === 'number' && typeof lat === 'number' && typeof alt === 'number') {
       lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
       codeInfo = { lon, lat, height: alt };
 
       this.drawObj = this.viewer.entities.add({
-        id,
+        id: entityId,
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition!),
-        point: {
-          color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
-          pixelSize: new Cesium.ConstantProperty(12),
-          outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
-          outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-        } as any
+        orientation: new Cesium.CallbackProperty(() => {
+          start += 1;
+          const roll = Cesium.Math.toRadians(start);
+          Cesium.Math.zeroToTwoPi(roll);
+          return Cesium.Transforms.headingPitchRollQuaternion(
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+            new Cesium.HeadingPitchRoll(roll, 0, 0.0)
+          );
+        }, false),
+        cylinder: {
+          length: length,
+          topRadius: topRadius,
+          bottomRadius: 0,
+          slices: 4,
+          outline: true,
+          outlineColor: pointColor || Cesium.Color.LIME,
+          material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
+        }
       } as any);
 
       (this.infoDetail.point as any) = { position: codeInfo };
@@ -187,15 +278,27 @@ class DrawTool {
       }
 
       this.drawObj = this.viewer.entities.add({
-        id,
+        id: entityId,
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition!),
-        point: {
-          color: new Cesium.ColorMaterialProperty(pointColor || this.config.material),
-          pixelSize: new Cesium.ConstantProperty(12),
-          outlineColor: new Cesium.ColorMaterialProperty(outlineColor || this.config.borderColor),
-          outlineWidth: new Cesium.ConstantProperty(this.config.borderWidth)
-        } as any
+        orientation: new Cesium.CallbackProperty(() => {
+          start += 1;
+          const roll = Cesium.Math.toRadians(start);
+          Cesium.Math.zeroToTwoPi(roll);
+          return Cesium.Transforms.headingPitchRollQuaternion(
+            Cesium.Cartesian3.fromDegrees(lon, lat, height),
+            new Cesium.HeadingPitchRoll(roll, 0, 0.0)
+          );
+        }, false),
+        cylinder: {
+          length: length,
+          topRadius: topRadius,
+          bottomRadius: 0,
+          slices: 4,
+          outline: true,
+          outlineColor: pointColor || Cesium.Color.LIME,
+          material: outlineColor || Cesium.Color.LIME.withAlpha(0.5)
+        }
       } as any);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
@@ -215,7 +318,6 @@ class DrawTool {
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   }
 
-
   /**
    * @description: 绘制线段
    * @param {Cesium.Color} [lineColor] - 线条颜色（可选）
@@ -226,7 +328,7 @@ class DrawTool {
 
     this.showMouseTip('左键点击添加拐点，右键完成线段');
 
-    const id: any = new Date().getTime();
+    const id: string = new Date().getTime().toString();
     let positions: Cesium.Cartesian3[] = [];
     let codeInfo: [number, number][] = [];
     let polygon = new Cesium.PolygonHierarchy();
@@ -308,7 +410,7 @@ class DrawTool {
     this.showMouseTip('左键点击设置起点，移动鼠标调整，右键完成');
 
     let westSouthEastNorth: number[] = [];
-    const id: any = new Date().getTime();
+    const id: string = new Date().getTime().toString();
 
     this.handler?.setInputAction((click: { position: Cesium.Cartesian2 }) => {
       if (click && click.position) {
@@ -395,7 +497,7 @@ class DrawTool {
 
     this.showMouseTip('左键点击设置圆心，移动鼠标调整半径，右键完成');
 
-    const id: any = new Date().getTime();
+    const id: string = new Date().getTime().toString();
     let radius = 0;
     let lngLat: [number, number] = [0, 0];
     let centerCartesian: Cesium.Cartesian3 | null = null;
@@ -416,7 +518,6 @@ class DrawTool {
           name: 'circle',
           id,
           ellipse: {
-
             height: new Cesium.ConstantProperty(0),
             outline: new Cesium.ConstantProperty(true),
             material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
@@ -458,31 +559,62 @@ class DrawTool {
 
   /**
    * @description: 绘制多边形区域（圆）
-   * @param {number} radius - 半径
-   * @param {number} steps - 步长
-   * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
-   * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
+   * @param { number } steps - 步长（多边形边数）
+   * @param { number } [radius] - 半径（可选，单位：千米），如果不提供则通过鼠标移动动态确定半径
+   * @param { Cesium.Color } [fillColor] - 填充颜色（可选）
+   * @param { Cesium.Color } [borderColor] - 边框颜色（可选）
    * @author: Suroc
    */
-  public drawCirclePlane(radius: number, steps: number, fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
+  public drawCirclePlane(steps: number, radius?: number, fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
     this.removeEntity();
 
-    this.showMouseTip('左键点击设置圆心，右键完成');
+    // 参数验证
+    if (!this.config.turf) {
+      console.warn('turf库未在初始化时传入，无法绘制圆形平面。请在创建DrawTool实例时通过config.turf传入turf库。');
+      return;
+    }
+
+    // 根据是否提供半径参数显示不同的提示
+    const hasFixedRadius = typeof radius === 'number' && !isNaN(radius) && radius > 0;
+    this.showMouseTip(hasFixedRadius ? '左键点击设置圆心，右键完成' : '左键点击设置圆心，移动鼠标调整半径，右键完成');
 
     // 参数验证和默认值设置
-    const validRadius = typeof radius === 'number' && !isNaN(radius) && radius > 0 ? radius : 1;
+    let validRadius = hasFixedRadius ? radius : 1;
     const validSteps = typeof steps === 'number' && !isNaN(steps) && steps > 3 ? steps : 64;
 
-    const id: any = new Date().getTime();
-    let positions: Array<{ lon: number; lat: number; }> = [];
+    const id: string = new Date().getTime().toString();
     let lngLat: [number, number] = [0, 0];
-    let polygon: Cesium.Cartesian3[] = [];
-    const options = { steps: validSteps, units: "kilometers" as const, properties: { foo: "bar" } };
+    let centerCartesian: Cesium.Cartesian3 | null = null;
+    let positions: Array<{ lon: number; lat: number; }> = [];
+
+    // 生成多边形坐标的回调函数
+    const generatePolygonPositions = (): Cesium.Cartesian3[] => {
+      if (!this.config.turf || !lngLat) return [];
+
+      try {
+        const options = {
+          steps: validSteps,
+          units: "kilometers" as const
+        };
+
+        const turfPos = this.config.turf.circle(lngLat, validRadius, options);
+        if (!turfPos || !turfPos.geometry || !turfPos.geometry.coordinates || !Array.isArray(turfPos.geometry.coordinates[0])) {
+          return [];
+        }
+
+        const convertedCoords = turfPos.geometry.coordinates[0];
+        positions = convertedCoords.filter((coord: any) => Array.isArray(coord) && coord.length >= 2 && !isNaN(coord[0]) && !isNaN(coord[1]))
+          .map((coord: [number, number]) => ({ lon: coord[0], lat: coord[1] }));
+
+        return positions.map(coord => Cesium.Cartesian3.fromDegrees(coord.lon, coord.lat, 0));
+      } catch (error) {
+        console.error('生成多边形坐标出错:', error);
+        return [];
+      }
+    };
 
     this.handler?.setInputAction((click: { position: Cesium.Cartesian2 }) => {
       if (click && click.position) {
-        if (this.drawObj) this.viewer.entities.remove(this.drawObj);
-
         let cartesian = this.viewer.camera.pickEllipsoid(click.position, this.viewer.scene.globe.ellipsoid);
         if (!cartesian) return;
 
@@ -497,46 +629,44 @@ class DrawTool {
         }
 
         lngLat = [lon, lat];
+        centerCartesian = cartesian;
 
-        // 检查是否提供了turf库
-        if (!this.config.turf) {
-          console.warn('turf库未在初始化时传入，无法绘制圆形平面。请在创建DrawTool实例时通过config.turf传入turf库。');
-          return;
-        }
+        // turf库已在函数开始处检查，这里无需重复检查
 
-        try {
-          let turfPos = this.config.turf.circle(lngLat, validRadius, options);
-          if (!turfPos || !turfPos.geometry || !turfPos.geometry.coordinates || !Array.isArray(turfPos.geometry.coordinates[0])) {
-            console.warn('turf.circle返回的数据格式不正确');
-            return;
-          }
+        // 使用CallbackProperty实现动态更新，参考d  rawCircle函数的实现方式
+        this.drawObj = this.viewer.entities.add({
+          id,
+          name: 'planeSelf',
+          polyline: {
+            width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
+            material: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
+            positions: new Cesium.CallbackProperty(generatePolygonPositions, false) as any
+          } as any,
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              const positions = generatePolygonPositions();
+              return new Cesium.PolygonHierarchy(positions);
+            }, false) as any,
+            material: new Cesium.ColorMaterialProperty(fillColor || this.config.material)
+          } as any
+        } as any);
 
-          let convertedCoords = turfPos.geometry.coordinates[0];
-          positions = convertedCoords
-            .filter((coord: any) => Array.isArray(coord) && coord.length >= 2 && !isNaN(coord[0]) && !isNaN(coord[1]))
-            .map((coord: [number, number]) => ({ lon: coord[0], lat: coord[1] }));
-        } catch (error) {
-          console.error('绘制圆形平面时出错:', error);
-          return;
-        }
+        // 如果没有固定半径，则添加鼠标移动事件来动态调整半径
+        if (!hasFixedRadius) {
+          this.handler?.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-        if (positions.length > 2) {
-          polygon = positions.map(coord => Cesium.Cartesian3.fromDegrees(coord.lon, coord.lat, 0));
+          this.handler?.setInputAction((move: { endPosition: Cesium.Cartesian2 }) => {
+            if (move && move.endPosition) {
+              let cartesian2 = this.viewer.camera.pickEllipsoid(move.endPosition, this.viewer.scene.globe.ellipsoid);
+              if (!cartesian2 || !centerCartesian) return;
 
-          this.drawObj = this.viewer.entities.add({
-            id,
-            name: 'planeSelf',
-            polyline: {
-              width: new Cesium.ConstantProperty(this.config.borderWidth - 0.5),
-              material: new Cesium.ColorMaterialProperty(borderColor || this.config.borderColor),
+              // 计算两点之间的距离（米），然后转换为千米用于turf.circle
+              const distanceMeters = Cesium.Cartesian3.distance(centerCartesian, cartesian2);
+              validRadius = distanceMeters / 1000; // 转换为千米
 
-              positions: polygon as any
-            } as any,
-            polygon: {
-              hierarchy: new Cesium.PolygonHierarchy(polygon),
-              material: new Cesium.ColorMaterialProperty(fillColor || this.config.material)
-            } as any
-          } as any);
+              // Callba  ckProperty会自动更新，无需额外操作
+            }
+          }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
         }
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -556,7 +686,7 @@ class DrawTool {
   }
 
   /**
-   * @description: 自定义区域绘制
+   * @description: 自定义区域绘制（多边形）
    * @param {Cesium.Color} [fillColor] - 填充颜色（可选）
    * @param {Cesium.Color} [borderColor] - 边框颜色（可选）
    * @author: Suroc
@@ -578,6 +708,7 @@ class DrawTool {
     const showMainTip = (): void => {
       this.showMouseTip(MAIN_TIP);
     };
+
     const showWarnTip = (): void => {
       this.showMouseTip(WARN_TIP);
       if (warnTimer) clearTimeout(warnTimer);
@@ -585,6 +716,7 @@ class DrawTool {
         showMainTip();
       }, 1000);
     };
+
     showMainTip();
 
     // 动态回调属性，返回最新的多边形顶点
@@ -660,13 +792,8 @@ class DrawTool {
 
       this.infoDetail.planeSelf = { id, positions: codeInfo };
 
-      try {
-        if (this.handler && !(this.handler as any).isDestroyed && typeof (this.handler as any).destroy === 'function') {
-          (this.handler as any).destroy();
-        }
-      } catch (e) { }
-
-      this.handler = null;
+      // 安全销毁事件处理器
+      this.safelyDestroyHandler();
 
       if (this.callback) {
         this.callback(this.infoDetail.planeSelf);
@@ -678,34 +805,15 @@ class DrawTool {
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   }
 
-
   /**
-   * @description: 移除实体对象
-   * @author: Suroc
+   * @description: 清理所有资源
    */
-  private removeEntity(): void {
-    this.removeMouseTip();
-    if (this.drawObj) {
-      this.viewer.entities.remove(this.drawObj);
-    }
+  public destroy(): void {
+    this.removeEntity();
+    this.infoDetail = { point: [], line: [], rectangle: [], circle: [], planeSelf: [] };
+    this.callback = null;
+    this.handler = null;
     this.drawObj = null;
-    if (this.handler) {
-      try {
-        (this.handler as any).destroy();
-      } catch (e) {
-        console.error('Error destroying handler:', e);
-      }
-    }
-    this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
-  }
-
-  /**
-   * @description: 返回绘制数据
-   * @return {InfoDetail} - 绘制数据
-   * @author: Suroc
-   */
-  public backInfoDetail(): InfoDetail {
-    return this.infoDetail;
   }
 }
 

@@ -138,7 +138,7 @@ class SurocSGP4 {
    * @param {TLEData[]} TLEs 卫星轨道数据
    */
   async init(TLEs: TLEData[]) {
-    if (!this.viewer || !TLEs.length) return
+    if (!this.viewer) return;
 
     if (!this.sgp4Module) {
       this.sgp4Module = await this.bindings.sgp4()
@@ -148,6 +148,7 @@ class SurocSGP4 {
 
     // 在 TLEs.map() 前提取一遍颜色表避免重复访问
     const colorMap = this._Color;
+    if (!TLEs.length) return;
     const promises = TLEs.map(async (TLE) => {
       const satName = TLE.name || 'Unknown Name';
       TLE.type = TLE.type ? TLE.type.replace(/\s+/g, '') : 'PAYLOAD';

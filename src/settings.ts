@@ -23,7 +23,7 @@ const Object: {
   setShouldAnimate: (flag?: boolean) => void;
   setClockTime: (starTime?: Cesium.JulianDate, endTime?: Cesium.JulianDate) => void;
   setMultiplier: (val?: number) => void;
-  sceneChange: (val: number, camera?: Cesium.Camera) => void;
+  sceneChange: (val: number, morph?: number) => void;
   lensHeight: (val?: number) => void;
   setImageryLayerEffect: (layerNum: number, options: {
     alpha?: number,
@@ -113,9 +113,11 @@ Object.setMultiplier = (val: number = 1) => {
 };
 
 /**
- * @description 2D/3D切换视角
+ * @description 2D/3D切换视角 
+ * @param val 1: 惯性系 2: 地固系 3: Columbus View 4: 2D 模式
+ * @param morph 插值系数，默认 1.0
  */
-Object.sceneChange = (val: number) => {
+Object.sceneChange = (val: number, morph: number = 1.0) => {
   const cameraController = viewer.scene.screenSpaceCameraController;
 
   // --- 统一清理 ---
@@ -134,7 +136,7 @@ Object.sceneChange = (val: number) => {
 
   if (val === 1) {
     // --- 惯性系 ---
-    viewer.scene.mode = Cesium.SceneMode.SCENE3D;
+    viewer.scene.morphTo3D(morph);
 
     postUpdateHandler = (scene: Cesium.Scene, time: Cesium.JulianDate) => {
       if (viewer.trackedEntity || scene.mode !== Cesium.SceneMode.SCENE3D) return;
@@ -159,13 +161,13 @@ Object.sceneChange = (val: number) => {
 
   } else if (val === 2) {
     // --- 地固系 ---
-    viewer.scene.mode = Cesium.SceneMode.SCENE3D;
+    viewer.scene.morphTo3D(morph);
   } else if (val === 3) {
     // --- Columbus View ---
-    viewer.scene.mode = Cesium.SceneMode.COLUMBUS_VIEW;
+    viewer.scene.morphToColumbusView(morph);
   } else if (val === 4) {
     // --- 2D 模式 ---
-    viewer.scene.mode = Cesium.SceneMode.SCENE2D;
+    viewer.scene.morphTo2D(morph);
   }
 };
 

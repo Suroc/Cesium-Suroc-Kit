@@ -116,25 +116,6 @@ function createNotification(message: string, type: 'error' | 'warning' = 'error'
   }, duration);
 }
 
-// 自定义解码函数，与 initToken.html 中的编码逻辑匹配
-function customDecode(encoded: string) {
-  // 创建与编码对应的字符映射表
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  let num = 0;
-
-  // 将编码字符串转换回数字
-  for (let i = 0; i < encoded.length; i++) {
-    const charCode = chars.indexOf(encoded[i]);
-    if (charCode === -1) continue; // 跳过无效字符
-    num = num * chars.length + charCode;
-  }
-
-  // 由于自定义编码是简化版的，我们需要修改验证逻辑
-  // 不再尝试完全解码，而是使用另一种方式验证
-  return encoded; // 返回原始token用于后续验证
-}
-
 // 初始化 token 并返回模块
 let init = (token: string) => {
   try {

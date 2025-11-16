@@ -723,7 +723,6 @@ class TransitTool {
 
     const start = Cesium.Cartesian3.fromDegrees(minLon, minLat);
     const end = Cesium.Cartesian3.fromDegrees(maxLon, maxLat);
-
     return this._createRectangle(id, start, end, label);
   }
 

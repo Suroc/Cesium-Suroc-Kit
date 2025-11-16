@@ -37,9 +37,8 @@ interface DrawConfig {
 }
 
 interface PointPosition {
-  lon: number;
-  lat: number;
-  height: number;
+  id: string;
+  positions: [number, number][];
 }
 
 interface LinePosition {
@@ -208,13 +207,13 @@ class DrawTool {
    * @param {Cesium.Color} [pointColor] - 点颜色（可选）
    * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
    */
-  public drawPoint(id?: string, lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 300000, topRadius: number = 180000): void {
+  public drawPoint(pointId?: string, lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 300000, topRadius: number = 180000): void {
     this.removeEntity();
 
     // 如果未提供id，则生成默认id
-    const entityId = id || new Date().getTime().toString();
+    const id = pointId || new Date().getTime().toString();
     let lastPosition: Cesium.Cartesian3 | null = null;
-    let codeInfo: PointPosition = { lon: 0, lat: 0, height: 0 };
+    let codeInfo: number[] = [];
     // 动态旋转圆锥体实体参数
     let start = 0;
 
@@ -222,10 +221,10 @@ class DrawTool {
     if (lon !== undefined && lat !== undefined && alt !== undefined &&
       typeof lon === 'number' && typeof lat === 'number' && typeof alt === 'number') {
       lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, alt + (length / 2));
-      codeInfo = { lon, lat, height: alt };
+      codeInfo = [lon, lat];
 
       this.drawObj = this.viewer.entities.add({
-        id: entityId,
+        id: id,
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition!),
         orientation: new Cesium.CallbackProperty(() => {
@@ -248,7 +247,7 @@ class DrawTool {
         }
       } as any);
 
-      (this.infoDetail.point as any) = { position: codeInfo };
+      this.infoDetail.point = { id, positions: [codeInfo] as any };
       if (this.callback) {
         this.callback(this.infoDetail.point);
       }
@@ -271,14 +270,14 @@ class DrawTool {
       const height = cartographic.height;
 
       lastPosition = Cesium.Cartesian3.fromDegrees(lon, lat, height + (length / 2));
-      codeInfo = { lon, lat, height };
+      codeInfo = [lon, lat];
 
       if (this.drawObj) {
         this.viewer.entities.remove(this.drawObj);
       }
 
       this.drawObj = this.viewer.entities.add({
-        id: entityId,
+        id: id,
         name: 'point',
         position: new Cesium.ConstantProperty(lastPosition),
         orientation: new Cesium.CallbackProperty(() => {
@@ -307,7 +306,7 @@ class DrawTool {
       this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
 
       if (lastPosition) {
-        (this.infoDetail.point as any) = { position: codeInfo };
+        this.infoDetail.point = { id, positions: [codeInfo] as any };
 
         if (this.callback) {
           this.callback(this.infoDetail.point);
@@ -436,7 +435,7 @@ class DrawTool {
             height: new Cesium.ConstantProperty(0),
             material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
             fill: true,
-            show: new Cesium.ConstantProperty(true)
+            show: new Cesium.ConstantProperty(true),
           } as any,
           polyline: {
             positions: new Cesium.CallbackProperty(() => Cesium.Cartesian3.fromDegreesArray(westSouthEastNorth), false),
@@ -738,6 +737,7 @@ class DrawTool {
         hierarchy: new Cesium.CallbackProperty(() => {
           return new Cesium.PolygonHierarchy(positions);
         }, false),
+        heightReference: (Cesium as any).HeightReference?.NONE,
         material: new Cesium.ColorMaterialProperty(fillColor || this.config.material),
         show: new Cesium.ConstantProperty(true),
         fill: true,

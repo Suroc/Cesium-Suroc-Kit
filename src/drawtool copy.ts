@@ -181,7 +181,6 @@ class DrawTool {
    * @author: Suroc
    */
   private renderStoredGraphics(): void {
-    this.removeEntity();
     // 优化渲染流程：先收集所有需要保留的实体ID，包括已存储图形的ID和当前临时对象ID
     const entitiesToKeep: string[] = this.drawObj ? [this.drawObj.id] : [];
 
@@ -420,6 +419,9 @@ class DrawTool {
    * @param {Cesium.Color} [outlineColor] - 边框颜色（可选）
    */
   public drawPoint(lon?: number, lat?: number, alt?: number, pointColor?: Cesium.Color, outlineColor?: Cesium.Color, length: number = 300000, topRadius: number = 180000): void {
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
 
     // 如果未提供id，则生成默认id
     const id = this.generateUniqueId();
@@ -463,6 +465,7 @@ class DrawTool {
       if (this.callback) {
         this.callback(pointData);
       }
+
       return; // 直接返回，跳过鼠标交互
     }
 
@@ -525,7 +528,6 @@ class DrawTool {
         }
       }
 
-      this.renderStoredGraphics();
       this.removeMouseTip();
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
   }
@@ -536,6 +538,10 @@ class DrawTool {
    * @author: Suroc
    */
   public drawLine(lineColor?: Cesium.Color): void {
+    // 优化绘制流程：先移除临时绘制对象，再渲染已存储图形，避免闪烁
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
 
     this.showMouseTip('点击左键添加点，右键结束');
     const id: string = this.generateUniqueId();
@@ -604,7 +610,6 @@ class DrawTool {
         this.callback(lineData);
       }
 
-      this.renderStoredGraphics();
       // 移除鼠标提示
       this.removeMouseTip();
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -617,6 +622,9 @@ class DrawTool {
    * @author: Suroc
    */
   public drawRectangle(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
 
     this.showMouseTip('左键点击设置起点，移动鼠标调整，右键完成');
 
@@ -693,7 +701,6 @@ class DrawTool {
         this.callback(rectangleData);
       }
 
-      this.renderStoredGraphics();
       // 移除鼠标提示
       this.removeMouseTip();
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -706,6 +713,9 @@ class DrawTool {
    * @author: Suroc
    */
   public drawCircle(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
 
     this.showMouseTip('左键点击设置圆心，移动鼠标调整半径，右键完成');
 
@@ -764,7 +774,7 @@ class DrawTool {
       if (this.callback) {
         this.callback(circleData);
       }
-      this.renderStoredGraphics();
+
       // 移除鼠标提示
       this.removeMouseTip();
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -779,6 +789,9 @@ class DrawTool {
    * @author: Suroc
    */
   public drawCirclePlane(steps: number, radius?: number, fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
 
     // 参数验证
     if (!this.config.turf) {
@@ -893,7 +906,6 @@ class DrawTool {
         this.callback(planeData);
       }
 
-      this.renderStoredGraphics();
       // 移除鼠标提示
       this.removeMouseTip();
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -906,6 +918,9 @@ class DrawTool {
    * @author: Suroc
    */
   public drawPlane(fillColor?: Cesium.Color, borderColor?: Cesium.Color): void {
+    this.removeEntity();
+    // 渲染已存储的所有图形，确保保留之前绘制的图形
+    this.renderStoredGraphics();
     const id = this.generateUniqueId();
     const ellipsoid = this.viewer.scene.globe.ellipsoid;
 
@@ -1016,7 +1031,6 @@ class DrawTool {
         this.callback(planeData);
       }
       setTimeout(() => {
-        this.renderStoredGraphics();
         this.removeMouseTip();
         if (warnTimer) clearTimeout(warnTimer);
       }, 1);
@@ -1024,102 +1038,11 @@ class DrawTool {
   }
 
   /**
-   * @description: 根据指定id删除图形
-   * @param {string} id - 要删除的图形ID
-   * @returns {boolean} - 是否成功删除图形
-   */
-  public removeGraphicsById(id: string): boolean {
-    if (!id) return false;
-
-    let found = false;
-    const entitiesToRemove: any[] = [];
-    const entityIdsToRemove: string[] = [];
-
-    // 1. 处理点类型图形（可能有多个子实体）
-    const pointIndex = this.infoDetail.point.findIndex(point => point.id === id);
-    if (pointIndex !== -1) {
-      const point = this.infoDetail.point[pointIndex];
-      // 收集点的所有子实体ID
-      point.positions.forEach((_, index) => {
-        entityIdsToRemove.push(`${point.id}-${index}`);
-      });
-      // 从数据中移除
-      this.infoDetail.point.splice(pointIndex, 1);
-      found = true;
-    }
-
-    // 2. 处理线类型图形
-    const lineIndex = this.infoDetail.line.findIndex(line => line.id === id);
-    if (lineIndex !== -1) {
-      entityIdsToRemove.push(id);
-      this.infoDetail.line.splice(lineIndex, 1);
-      found = true;
-    }
-
-    // 3. 处理矩形类型图形
-    const rectIndex = this.infoDetail.rectangle.findIndex(rect => rect.id === id);
-    if (rectIndex !== -1) {
-      entityIdsToRemove.push(id);
-      this.infoDetail.rectangle.splice(rectIndex, 1);
-      found = true;
-    }
-
-    // 4. 处理圆形类型图形
-    const circleIndex = this.infoDetail.circle.findIndex(circle => circle.id === id);
-    if (circleIndex !== -1) {
-      entityIdsToRemove.push(id);
-      this.infoDetail.circle.splice(circleIndex, 1);
-      found = true;
-    }
-
-    // 5. 处理平面类型图形
-    const planeIndex = this.infoDetail.planeSelf.findIndex(plane => plane.id === id);
-    if (planeIndex !== -1) {
-      entityIdsToRemove.push(id);
-      this.infoDetail.planeSelf.splice(planeIndex, 1);
-      found = true;
-    }
-
-    // 移除对应的Cesium实体
-    if (found && entityIdsToRemove.length > 0) {
-      this.viewer.entities.values.forEach((entity: any) => {
-        if (entityIdsToRemove.includes(entity.id)) {
-          entitiesToRemove.push(entity);
-        }
-      });
-      entitiesToRemove.forEach(entity => this.viewer.entities.remove(entity));
-    }
-
-    return found;
-  }
-
-  /**
-   * @description: 删除所有已绘制的图形
-   * 从viewer中移除所有与drawtool相关的图形实体，并清空infoDetail数据
-   */
-  public removeAllGraphics(): void {
-    // 复制所有图形的ID到临时数组，避免在迭代过程中修改原数组
-    const allGraphicsIds: string[] = [];
-
-    // 收集所有图形的ID
-    this.infoDetail.point.forEach(point => allGraphicsIds.push(point.id));
-    this.infoDetail.line.forEach(line => allGraphicsIds.push(line.id));
-    this.infoDetail.rectangle.forEach(rect => allGraphicsIds.push(rect.id));
-    this.infoDetail.circle.forEach(circle => allGraphicsIds.push(circle.id));
-    this.infoDetail.planeSelf.forEach(plane => allGraphicsIds.push(plane.id));
-
-    // 调用removeGraphicsById删除每个图形
-    allGraphicsIds.forEach(id => this.removeGraphicsById(id));
-
-    // 确保infoDetail数据完全清空
-    this.infoDetail = { point: [], line: [], rectangle: [], circle: [], planeSelf: [] };
-  }
-
-  /**
    * @description: 清理所有资源
    */
   public destroy(): void {
-    this.removeAllGraphics();
+    this.removeEntity();
+    this.infoDetail = { point: [], line: [], rectangle: [], circle: [], planeSelf: [] };
     this.callback = null;
     this.handler = null;
     this.drawObj = null;

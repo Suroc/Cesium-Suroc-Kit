@@ -2,16 +2,27 @@
  * @Author: Suroc
  * @Date: 2025-01-11 11:12:56
  * @LastEditTime: 2025-08-20 10:00:00
- * @Description:  NPM包入口文件（仅保留 IP / 固定字符串 / 过期时间 三个字段校验）
+ * @Description:  NPM包入口文件（使用 SurocCesiumKitToken 进行 Token 验证）
  */
+
+// 扩展全局窗口接口，添加 CesiumKitToken 支持
+declare global {
+  interface Window {
+    CesiumKitToken?: new () => {
+      initialize: () => Promise<boolean>;
+      decodeToken: (token: string) => Promise<any>;
+      generateToken: (ip: string, fixed: string, expireTs: number) => Promise<string>;
+    };
+  }
+}
 
 import DrawTool from './drawtool';
 import settings from './settings';
 import { SurocSGP4, Slab, Sgp4, Elements, ResonanceState, Constants, Bindings } from './SurocSGP4_v1.0.5';
 import surocSGP4 from './SurocSGP4_v1.0.5';
+import tokenManager from './TokenManager';
 
 let isInitialized = false;
-const FIXED_STRING = '^creatunion.aseem.SurocKit&';
 
 /**
  * 自定义消息提示函数 - 创建动态HTML提示元素
@@ -33,7 +44,26 @@ function showErrorMessage(message: string, type: 'error' | 'warning' = 'error') 
     console.warn('Cesium-Suroc-Kit: ' + message);
   }
 
-  return null;
+}
+
+// 辅助函数：创建和包装模块，防止未初始化调用
+function wrapModule(module: any) {
+  const wrapped: any = {};
+  Object.keys(module).forEach((key) => {
+    const value = module[key];
+    if (typeof value === 'function') {
+      wrapped[key] = (...args: any[]) => {
+        if (!isInitialized) {
+          showErrorMessage('请先调用 init(token)');
+          return;
+        }
+        return value(...args);
+      };
+    } else {
+      wrapped[key] = value;
+    }
+  });
+  return wrapped;
 }
 
 /**
@@ -116,56 +146,36 @@ function createNotification(message: string, type: 'error' | 'warning' = 'error'
   }, duration);
 }
 
-// 初始化 token 并返回模块
-let init = (token: string) => {
+// 初始化 token 并返回模块（加入 TokenManager 解密验证）
+let init = async (token: string) => {
   try {
-    // 尝试使用 atob 解码，如果失败则使用简化验证
-    let decoded;
-    let parts;
-    let tokenIp = '';
-    let fixed = '';
-    let expireTsStr = '';
-
-    try {
-      // 首先尝试标准 Base64 解码
-      decoded = atob(token);
-      parts = decoded.split('|');
-
-      if (parts.length === 4) {
-        [, tokenIp, fixed, expireTsStr] = parts; // hash字段忽略
-      } else {
-        // 如果格式不正确，使用回退验证逻辑
-        throw new Error('Token format incorrect');
-      }
-    } catch (e) {
-      // 简化验证逻辑：不严格要求格式，只要token不为空就通过基本验证
-      // 这是一个临时解决方案，建议后续实现完整的自定义解码逻辑
-      tokenIp = typeof window !== 'undefined' ? new URL(window.location.href).hostname : '';
-      fixed = FIXED_STRING;
-      expireTsStr = (Date.now() + 1000 * 60 * 60 * 24 * 365).toString(); // 默认一年有效期
+    //  *  1. 初始化 TokenManager 并尝试解密 token
+    const ok = await tokenManager.initialize();
+    if (!ok) {
+      return showErrorMessage("TokenManager 初始化失败");
     }
 
-    let expireTs = Number(expireTsStr);
-    if (isNaN(expireTs)) {
-      // 如果过期时间无效，设置默认值
-      expireTs = Date.now() + 1000 * 60 * 60 * 24 * 365; // 默认一年有效期
+    // 使用 TokenManager 尝试解密
+    const decoded: any = await tokenManager.validateToken(token);
+
+    if (!decoded) {
+      return showErrorMessage("无效的 Token：解密失败或数据格式不正确");
     }
 
-    // 修改验证逻辑：不再严格要求固定字符串和IP匹配
-    // 只进行基本的非空检查
-    if (!token) {
-      return showErrorMessage('Token 不能为空');
+    // Token 数据
+    const { ip, fixed, expireTs } = decoded;
+
+    // FIXED 字符串校验（可选：你可以根据业务取消）
+    if (fixed !== tokenManager.FIXED_STRING) {
+      return showErrorMessage("Token 固定字符串不匹配");
     }
 
-    // 过期检查也改为可选，如果提供了有效的过期时间才检查
-    if (!isNaN(expireTs) && Date.now() > expireTs) {
-      console.warn('Cesium-Suroc-Kit: Token 可能已过期，但仍允许使用');
-      // 不再阻止使用，只显示警告
+    // 过期检查
+    if (Date.now() > expireTs) {
+      return showErrorMessage("Cesium-Suroc-Kit: 令牌已过期");
     }
 
-    // 不再严格验证 IP 和端口，允许在任何环境下使用
-    // 这是为了方便开发和测试使用
-
+    // 2.TokenManager 解密成功
     isInitialized = true;
 
     // 包装模块，防止未初始化调用
@@ -188,6 +198,7 @@ let init = (token: string) => {
       return wrapped;
     }
 
+    // 3. 返回模块 + TokenManager 实例
     return {
       ...wrapModule(settings),
       ...wrapModule(surocSGP4),
@@ -198,12 +209,17 @@ let init = (token: string) => {
       Elements,
       ResonanceState,
       Constants,
-      Bindings
+      Bindings,
+      tokenManager  // ← 新增返回
     };
+
   } catch (err: any) {
-    return showErrorMessage('Token 验证失败: ' + err.message);
+    return showErrorMessage("Token 验证失败: " + err.message);
   }
-}
-const SurocKit = { init };
+};
+
+
+
+const SurocKit = { init, tokenManager };
 
 export default SurocKit;

@@ -524,10 +524,8 @@ export default class SurocSGP4 {
       }
     }
 
-    console.log('SGP4 TEME 坐标（单位：米）：');
     console.table(SGP4EciPositions);
 
-    console.log('J2000 坐标（单位：米）：');
     console.table(J2000Positions);
 
     return {

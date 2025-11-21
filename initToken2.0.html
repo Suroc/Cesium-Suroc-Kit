@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>CesiumKit Token 生成器 & 解密器</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background-color: #f5f5f5;
+      padding: 20px;
+    }
+
+    section {
+      width: 100%;
+      max-width: 600px;
+      margin: 15px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 500;
+      color: #555;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 2px solid #e0e0e0;
+      border-radius: 4px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+
+    input.error,
+    textarea.error {
+      border-color: #e74c3c;
+    }
+
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    button {
+      margin-bottom: 10px;
+      width: 100%;
+      height: 40px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      position: relative;
+    }
+
+    button:hover {
+      background-color: #2980b9;
+    }
+
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+
+    button.loading::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      top: 50%;
+      left: 50%;
+      margin-top: -8px;
+      margin-left: -8px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    #decoded {
+      width: 100%;
+      background: #f6f8fa;
+      padding: 15px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+      border: 1px solid #e0e0e0;
+      min-height: 60px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    #error-message {
+      background-color: #fee;
+      color: #c00;
+      padding: 10px 15px;
+      margin-bottom: 15px;
+      border-radius: 4px;
+      border-left: 4px solid #e74c3c;
+      display: none;
+    }
+
+    #status-indicator {
+      text-align: center;
+      padding: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .success-message {
+      background-color: #e8f5e8;
+      color: #27ae60;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      border-left: 4px solid #27ae60;
+    }
+
+    .info-message {
+      color: #7f8c8d;
+      font-size: 14px;
+      margin-top: 5px;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <section>
+    <h2>CesiumKit Token 生成器 & 解密器</h2>
+    <div id="status-indicator">初始化中...</div>
+  </section>
+
+  <section>
+    <div id="error-message"></div>
+    <label>IP 地址<br /><input id="ip" type="text" value="192.168.20.52:3006" /></label>
+    <span class="info-message">请输入完整的 IP 地址和端口号，如：192.168.1.1:8080</span>
+  </section>
+
+  <section>
+    <label>过期时间 (YYYY-MM-DD HH:MM:SS)<br /><input id="expire" type="text" value="2075-12-31 15:59:59" /></label>
+    <span class="info-message">格式示例：2025-12-31 23:59:59</span>
+  </section>
+
+  <section>
+    <label>固定字符串<br /><input id="fixed" type="text" value="^creatunion.aseem.SurocKit&" /></label>
+    <span class="info-message">请勿修改此固定字符串</span>
+  </section>
+
+  <section>
+    <button id="generate">生成 Token</button>
+    <textarea id="token" placeholder="生成的 Token 将显示在这里..."></textarea>
+  </section>
+
+  <section>
+    <button id="decode">解密 Token</button>
+    <pre id="decoded">解密结果将显示在这里...</pre>
+  </section>
+
+  <section>
+    <h2>库功能测试</h2>
+    <button id="testLibrary">测试 Cesium-Suroc-Kit 库</button>
+    <pre id="test-result"
+      style="margin-top: 10px; min-height: 100px; background: #f6f8fa; padding: 15px; border-radius: 6px; border: 1px solid #e0e0e0; font-family: 'Courier New', monospace;">测试结果将显示在这里...</pre>
+  </section>
+
+
+  <script src="public/sodium.min.js"></script>
+  <script type="module">
+    // 正确导入 ES 模块
+    import * as CesiumSurocKitModule from './dist/index.mjs';
+    // 将模块挂载到全局，方便其他地方使用
+    window.CesiumSurocKit = CesiumSurocKitModule;
+    // 模块加载完成后，执行所有依赖代码
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 正确获取tokenManager单例实例
+      // 注意：由于Rollup混合了命名导出和默认导出，我们需要确保正确访问
+      let tokenManager = null;
+
+      // 优先尝试直接访问命名导出的tokenManager
+      if (CesiumSurocKitModule.tokenManager) {
+        tokenManager = CesiumSurocKitModule.tokenManager;
+      }
+      // 如果失败，尝试从默认导出中获取
+      else if (CesiumSurocKitModule.default && CesiumSurocKitModule.default.tokenManager) {
+        tokenManager = CesiumSurocKitModule.default.tokenManager;
+      } else {
+        console.error('无法获取tokenManager实例');
+      }
+
+      // 将tokenManager挂载到window以便其他脚本访问
+      window.tokenManager = tokenManager;
+
+      // 初始禁用按钮
+      document.getElementById('generate').disabled = true;
+      document.getElementById('decode').disabled = true;
+
+      // 初始化
+      const initSuccess = await tokenManager.initialize();
+
+      // 如果初始化成功，启用按钮
+      if (initSuccess) {
+        document.getElementById('generate').disabled = false;
+        document.getElementById('decode').disabled = false;
+      } else {
+        console.error('TokenManager初始化失败，按钮保持禁用');
+      }
+    });
+  </script>
+  <script>
+    // 使用window.tokenManager代替直接创建的tokenManager
+    // 注意：所有使用tokenManager的代码现在都应该在模块加载的回调中执行
+
+    /**
+     * 防抖函数，限制函数调用频率
+     * @param {Function} func - 要防抖的函数
+     * @param {number} delay - 延迟时间（毫秒）
+     * @returns {Function} 防抖后的函数
+     */
+    function debounce(func, delay) {
+      let timeoutId;
+      return function (...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+
+    /**
+     * 安全地转义 HTML，防止 XSS 攻击
+     * @param {string} str - 要转义的字符串
+     * @returns {string} 转义后的字符串
+     */
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // 缓存 DOM 元素引用，提高性能
+    const elements = {
+      ipInput: document.getElementById('ip'),
+      fixedInput: document.getElementById('fixed'),
+      expireInput: document.getElementById('expire'),
+      tokenInput: document.getElementById('token'),
+      decodedElement: document.getElementById('decoded'),
+      generateButton: document.getElementById('generate'),
+      decodeButton: document.getElementById('decode'),
+      errorMessage: document.getElementById('error-message'),
+      statusIndicator: document.getElementById('status-indicator')
+    };
+
+    /**
+     * 初始化 UI 事件监听
+     */
+    function initEventListeners() {
+      // 生成 Token 按钮点击事件
+      document.getElementById("generate").addEventListener("click", handleGenerateToken);
+
+      // 解密 Token 按钮点击事件
+      document.getElementById("decode").addEventListener("click", handleDecodeToken);
+    }
+
+    /**
+     * 验证 IP 地址格式（支持 IPv4、IPv6 和带端口的格式）
+     * @param {string} ip - IP 地址
+     * @returns {boolean} 是否有效
+     */
+    function isValidIp(ip) {
+      if (!ip || typeof ip !== 'string') return false;
+
+      // 移除可能的协议前缀
+      const cleanIp = ip.replace(/^https?:\/\//, '');
+
+      // IPv4 格式验证
+      const ipv4Pattern = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:\d{1,5})?$/;
+
+      // IPv6 基本格式验证（简化版）
+      const ipv6Pattern = /^\[?([0-9a-fA-F]{0,4}:){0,7}([0-9a-fA-F]{0,4})\]?(:\d{1,5})?$/;
+
+      // 域名格式验证（简化版）
+      const domainPattern = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(:\d{1,5})?$/;
+
+      // 安全地验证输入，防止 ReDoS 攻击
+      if (cleanIp.length > 255) return false; // 合理的长度限制
+
+      return ipv4Pattern.test(cleanIp) || ipv6Pattern.test(cleanIp) || domainPattern.test(cleanIp);
+    }
+
+    /**
+     * 处理生成 Token 事件
+     */
+    async function handleGenerateToken() {
+      try {
+        // 隐藏之前的错误消息
+        hideErrorMessage();
+
+        // 获取输入元素
+        const ipInput = document.getElementById("ip");
+        const fixedInput = document.getElementById("fixed");
+        const expireInput = document.getElementById("expire");
+
+        // 获取输入值
+        const ip = ipInput.value.trim();
+        const fixed = fixedInput.value.trim();
+        const expire = expireInput.value.trim();
+
+        // 验证 IP 地址
+        if (!ip) {
+          showErrorMessage("IP 地址不能为空", ipInput);
+          return;
+        }
+
+        if (!isValidIp(ip)) {
+          showErrorMessage("请输入有效的 IP 地址格式", ipInput);
+          return;
+        }
+
+        // 验证过期时间
+        if (!expire) {
+          showErrorMessage("过期时间不能为空", expireInput);
+          return;
+        }
+
+        // 转换过期时间为时间戳
+        const expireTs = tokenManager.parseDateTimeToTimestamp(expire);
+        if (isNaN(expireTs)) {
+          showErrorMessage("过期时间格式错误，请使用 YYYY-MM-DD HH:MM:SS 格式", expireInput);
+          return;
+        }
+
+        // // 检查时间是否合理（不能是过去的时间）
+        // if (expireTs < Date.now()) {
+        //   showErrorMessage("过期时间不能早于当前时间", expireInput);
+        //   return;
+        // }
+
+        // 设置加载状态
+        setButtonLoading('generate', true);
+
+        // 生成 Token
+        const token = await tokenManager.generateToken(ip, fixed, expireTs);
+        document.getElementById("token").value = token;
+
+        // 显示成功消息
+        const decodedElement = document.getElementById("decoded");
+        decodedElement.innerHTML = '<div class="success-message">Token 生成成功</div>';
+        decodedElement.innerHTML = '<div class="success-message">Token 生成成功 - 已复制到剪贴板、粘贴即用</div>';
+      } catch (err) {
+        console.error("生成 Token 时出错:", err);
+        showErrorMessage(`生成失败：${err.message}`);
+        showDecodedSection(`生成失败：${err.message}`, true);
+      } finally {
+        // 无论成功失败，都移除加载状态
+        setButtonLoading('generate', false);
+      }
+    }
+
+    /**
+     * 处理解密 Token 事件 - 使用防抖优化
+     */
+    const handleDecodeToken = debounce(async function () {
+      try {
+        // 隐藏之前的错误消息
+        hideErrorMessage();
+
+        // 获取 Token 输入 - 使用缓存的元素引用
+        const token = elements.tokenInput.value.trim();
+
+        // 验证输入
+        if (!token) {
+          showErrorMessage("请输入 Token", elements.tokenInput);
+          return;
+        }
+
+        // 验证 Token 长度和格式
+        if (token.length < 50 || token.length > 1000) {
+          showErrorMessage("Token 格式无效", elements.tokenInput);
+          showDecodedSection("解密失败：Token 格式无效", true);
+          return;
+        }
+
+        // 验证 Token 只包含 base64 URL 安全字符
+        if (!/^[A-Za-z0-9_-]+$/.test(token)) {
+          showErrorMessage("Token 包含非法字符", elements.tokenInput);
+          showDecodedSection("解密失败：Token 包含非法字符", true);
+          return;
+        }
+
+        // 设置加载状态
+        setButtonLoading('decode', true);
+
+        // 解密 Token
+        const data = await tokenManager.decodeToken(token);
+
+        if (!data) {
+          showDecodedSection("解密失败：Token 无效", true);
+          return;
+        }
+
+        // 检查是否过期
+        if (Date.now() > data.expireTs) {
+          showDecodedSection("解密失败：Token 已过期", true);
+          return;
+        }
+
+        // 计算剩余有效期的更友好显示
+        const timeLeft = data.expireTs - Date.now();
+        let expireIn = '';
+        if (timeLeft < 60000) { // 小于1分钟
+          expireIn = Math.ceil(timeLeft / 1000) + ' 秒';
+        } else if (timeLeft < 3600000) { // 小于1小时
+          expireIn = Math.ceil(timeLeft / 60000) + ' 分钟';
+        } else if (timeLeft < 86400000) { // 小于1天
+          expireIn = Math.ceil(timeLeft / 3600000) + ' 小时';
+        } else {
+          expireIn = Math.floor(timeLeft / 86400000) + ' 天';
+        }
+
+        // 显示解密结果 - 安全地转义敏感信息
+        const resultData = {
+          ip: escapeHtml(data.ip || 'N/A'),
+          fixed: escapeHtml(data.fixed || 'N/A'),
+          expire: tokenManager.formatTimestamp(data.expireTs),
+          isValid: true,
+          expireIn: expireIn
+        };
+
+        showDecodedSection(JSON.stringify(resultData, null, 2));
+      } catch (err) {
+        console.error("解密 Token 时出错:", err);
+        // 不向用户暴露详细错误信息
+        showErrorMessage("解密失败，请检查 Token 格式");
+        showDecodedSection("解密失败：Token 处理过程中发生错误", true);
+      } finally {
+        // 无论成功失败，都移除加载状态
+        setButtonLoading('decode', false);
+      }
+    }, 300); // 300ms 防抖延迟
+
+    /**
+     * 显示错误消息
+     * @param {string} message - 错误消息
+     * @param {HTMLElement|null} inputElement - 关联的输入元素
+     */
+    function showErrorMessage(message, inputElement = null) {
+      // 安全地转义错误消息
+      const safeMessage = escapeHtml(message);
+
+      elements.errorMessage.textContent = safeMessage;
+      elements.errorMessage.style.display = 'block';
+
+      // 如果有输入元素，添加错误样式
+      if (inputElement) {
+        inputElement.classList.add('error');
+        // 点击错误提示时，聚焦到有问题的输入框
+        elements.errorMessage.onclick = () => {
+          try {
+            inputElement.focus();
+          } catch (e) {
+            console.warn('无法聚焦到输入元素', e);
+          }
+        };
+      }
+
+      // 5秒后自动隐藏错误消息
+      setTimeout(() => {
+        hideErrorMessage(inputElement);
+      }, 5000);
+    }
+
+    /**
+     * 隐藏错误消息
+     * @param {HTMLElement|null} inputElement - 关联的输入元素
+     */
+    function hideErrorMessage(inputElement = null) {
+      const errorElement = document.getElementById("error-message");
+      errorElement.style.display = 'none';
+      errorElement.textContent = '';
+
+      // 移除输入元素的错误样式
+      if (inputElement) {
+        inputElement.classList.remove('error');
+      }
+    }
+
+    /**
+     * 显示解码结果区域
+     * @param {string} content - 要显示的内容
+     * @param {boolean} isError - 是否为错误消息
+     */
+    function showDecodedSection(content, isError = false) {
+      const decodedElement = document.getElementById("decoded");
+      decodedElement.textContent = content;
+
+      // 根据内容类型设置不同样式
+      if (isError) {
+        decodedElement.style.backgroundColor = '#fee';
+        decodedElement.style.color = '#c00';
+        decodedElement.style.borderColor = '#e74c3c';
+      } else {
+        decodedElement.style.backgroundColor = '#f6f8fa';
+        decodedElement.style.color = '#333';
+        decodedElement.style.borderColor = '#e0e0e0';
+      }
+    }
+
+    /**
+     * 设置按钮加载状态
+     * @param {string} buttonId - 按钮 ID
+     * @param {boolean} isLoading - 是否加载中
+     */
+    function setButtonLoading(buttonId, isLoading) {
+      const button = document.getElementById(buttonId);
+      button.disabled = isLoading;
+
+      if (isLoading) {
+        button.classList.add('loading');
+        button.dataset.originalText = button.textContent;
+        button.textContent = '';
+      } else {
+        button.classList.remove('loading');
+        button.textContent = button.dataset.originalText || '';
+      }
+    }
+
+    /**
+     * 更新初始化状态指示器
+     * @param {string} message - 状态消息
+     * @param {boolean} isReady - 是否已准备就绪
+     */
+    function updateStatusIndicator(message, isReady = false) {
+      const indicator = document.getElementById('status-indicator');
+      indicator.textContent = message;
+
+      if (isReady) {
+        indicator.style.color = '#27ae60';
+        // 启用按钮
+        document.getElementById('generate').disabled = false;
+        document.getElementById('decode').disabled = false;
+      }
+    }
+
+    /**
+     * 测试 Cesium-Suroc-Kit 库功能
+     * 功能：验证库加载状态、初始化库、测试核心功能、显示详细结果
+     */
+    async function testCesiumSurocKit() {
+      // 获取DOM元素
+      const testResult = document.getElementById('test-result');
+      const testButton = document.getElementById('testLibrary');
+
+      // 显示初始状态并禁用按钮防止重复点击
+      function updateTestResult(text, isLoading = false) {
+        testResult.textContent = text;
+        testResult.style.backgroundColor = '#f6f8fa';
+        testResult.style.color = '#333';
+        if (testButton) {
+          testButton.disabled = isLoading;
+          testButton.textContent = isLoading ? '测试中...' : '测试 Cesium-Suroc-Kit 库';
+        }
+      }
+
+      updateTestResult('正在测试 Cesium-Suroc-Kit 库...', true);
+
+      try {
+        // 检查库是否加载成功
+        if (!window.CesiumSurocKit) {
+          // 尝试从全局对象获取库
+          const possibleNames = ['CesiumSurocKit', 'surocKit', 'CesiumKit'];
+          let foundLib = null;
+
+          for (const name of possibleNames) {
+            if (window[name]) {
+              foundLib = window[name];
+              window.CesiumSurocKit = foundLib;
+              break;
+            }
+          }
+
+          if (!foundLib) {
+            throw new Error('Cesium-Suroc-Kit 库未加载成功，请检查引入是否正确');
+          }
+        }
+
+        updateTestResult(testResult.textContent + '\n✓ 库加载成功');
+
+        const testToken = document.getElementById("token").value || 'tq5fDgAAAAEAAAAAAAAAAQAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD44oBn8P9iO3456789';
+
+        try {
+          let result;
+          if (typeof window.CesiumSurocKit.default.init === 'function') {
+            result = await window.CesiumSurocKit.default.init(testToken);
+            if (typeof result === 'object' && result !== null) {
+              const resultInfo = document.getElementById('test-result');
+              // 显示所有函数
+              function getAllFunctionNames(obj) {
+                let props = [];
+                let current = obj;
+
+                while (current) {
+                  props = props.concat(Object.getOwnPropertyNames(current));
+                  current = Object.getPrototypeOf(current);
+                }
+
+                return [...new Set(props)].filter(
+                  key => typeof obj[key] === "function"
+                );
+              }
+
+              const fns = getAllFunctionNames(result);
+              resultInfo.textContent += `\n验证通过:\n${fns.join("\n")}`;
+            } else {
+              testResult.textContent += `\n❌ 无效令牌`;
+            }
+          } else {
+            testResult.textContent += '\n❌ 库缺少 init 方法';
+          }
+        } catch (error) {
+          testResult.textContent += `\n❌ 令牌验证失败: ${error.message}`;
+        }
+
+        // 添加CSS样式使pre标签支持自动换行和滚动条
+        testResult.style.whiteSpace = 'pre-wrap';
+        testResult.style.wordWrap = 'break-word';
+        testResult.style.maxHeight = '400px';
+        testResult.style.overflowY = 'auto';
+        testResult.style.backgroundColor = '#e8f5e8';
+        testResult.style.color = '#27ae60';
+
+      } catch (error) {
+        // 显示错误信息
+        console.error('库测试失败:', error);
+        updateTestResult(testResult.textContent + `\n\n❌ 测试失败: ${error.message}\n详细信息请查看控制台`);
+        testResult.style.backgroundColor = '#fee';
+        testResult.style.color = '#c00';
+      } finally {
+        // 恢复按钮状态
+        if (testButton) {
+          testButton.disabled = false;
+          testButton.textContent = '测试 Cesium-Suroc-Kit 库';
+        }
+      }
+    }
+
+    // 页面加载完成后初始化事件监听
+    document.addEventListener("DOMContentLoaded", () => {
+      initEventListeners();
+
+      // 为测试按钮添加事件监听
+      const testButton = document.getElementById('testLibrary');
+      if (testButton) {
+        testButton.addEventListener('click', testCesiumSurocKit);
+      }
+
+      // 显示初始化状态
+      if (window.CesiumSurocKit) {
+        updateStatusIndicator('Cesium-Suroc-Kit 库已加载', true);
+      }
+    });
+  </script>
+</body>
+
+</html>

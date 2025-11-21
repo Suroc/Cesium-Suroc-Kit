@@ -201,39 +201,22 @@
       style="margin-top: 10px; min-height: 100px; background: #f6f8fa; padding: 15px; border-radius: 6px; border: 1px solid #e0e0e0; font-family: 'Courier New', monospace;">测试结果将显示在这里...</pre>
   </section>
 
-
   <script src="public/sodium.min.js"></script>
+  <script src="public/SurocCesiumKit.js"></script>
   <script type="module">
-    // 正确导入 ES 模块
     import * as CesiumSurocKitModule from './dist/index.mjs';
     // 将模块挂载到全局，方便其他地方使用
     window.CesiumSurocKit = CesiumSurocKitModule;
+    console.log(window.CesiumSurocKit);
     // 模块加载完成后，执行所有依赖代码
     document.addEventListener('DOMContentLoaded', async () => {
-      // 正确获取tokenManager单例实例
-      // 注意：由于Rollup混合了命名导出和默认导出，我们需要确保正确访问
-      let tokenManager = null;
-
-      // 优先尝试直接访问命名导出的tokenManager
-      if (CesiumSurocKitModule.tokenManager) {
-        tokenManager = CesiumSurocKitModule.tokenManager;
-      }
-      // 如果失败，尝试从默认导出中获取
-      else if (CesiumSurocKitModule.default && CesiumSurocKitModule.default.tokenManager) {
-        tokenManager = CesiumSurocKitModule.default.tokenManager;
-      } else {
-        console.error('无法获取tokenManager实例');
-      }
-
-      // 将tokenManager挂载到window以便其他脚本访问
-      window.tokenManager = tokenManager;
 
       // 初始禁用按钮
       document.getElementById('generate').disabled = true;
       document.getElementById('decode').disabled = true;
 
       // 初始化
-      const initSuccess = await tokenManager.initialize();
+      const initSuccess = SurocCesiumKitTokenManager.initialize();
 
       // 如果初始化成功，启用按钮
       if (initSuccess) {
@@ -245,9 +228,6 @@
     });
   </script>
   <script>
-    // 使用window.tokenManager代替直接创建的tokenManager
-    // 注意：所有使用tokenManager的代码现在都应该在模块加载的回调中执行
-
     /**
      * 防抖函数，限制函数调用频率
      * @param {Function} func - 要防抖的函数
@@ -359,7 +339,7 @@
         }
 
         // 转换过期时间为时间戳
-        const expireTs = tokenManager.parseDateTimeToTimestamp(expire);
+        const expireTs = SurocCesiumKitTokenManager.parseDateTimeToTimestamp(expire);
         if (isNaN(expireTs)) {
           showErrorMessage("过期时间格式错误，请使用 YYYY-MM-DD HH:MM:SS 格式", expireInput);
           return;
@@ -375,7 +355,7 @@
         setButtonLoading('generate', true);
 
         // 生成 Token
-        const token = await tokenManager.generateToken(ip, fixed, expireTs);
+        const token = await SurocCesiumKitTokenManager.generateToken(ip, fixed, expireTs);
         document.getElementById("token").value = token;
 
         // 显示成功消息
@@ -427,7 +407,7 @@
         setButtonLoading('decode', true);
 
         // 解密 Token
-        const data = await tokenManager.decodeToken(token);
+        const data = await SurocCesiumKitTokenManager.decodeToken(token);
 
         if (!data) {
           showDecodedSection("解密失败：Token 无效", true);
@@ -457,7 +437,7 @@
         const resultData = {
           ip: escapeHtml(data.ip || 'N/A'),
           fixed: escapeHtml(data.fixed || 'N/A'),
-          expire: tokenManager.formatTimestamp(data.expireTs),
+          expire: SurocCesiumKitTokenManager.formatTimestamp(data.expireTs),
           isValid: true,
           expireIn: expireIn
         };

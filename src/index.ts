@@ -98,7 +98,7 @@ function createNotification(message: string, type: 'error' | 'warning' = 'error'
     font-size: 14px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    z-index: 999999;
+    z-index: 99999999999999999999999999999999999999999999999;
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
     display: flex;
@@ -164,10 +164,12 @@ let init = async (token: string) => {
 
     // Token 数据
     const { ip, fixed, expireTs } = decoded;
+    // 获取当前网页的 IP/Host
+    const currentHost = window.location.host;
 
-    // FIXED 字符串校验（可选：你可以根据业务取消）
-    if (fixed !== tokenManager.FIXED_STRING) {
-      return showErrorMessage("Token 固定字符串不匹配");
+    // IP 校验（保证 Token 中的 IP 必须与访问地址一致）
+    if (ip !== currentHost) {
+      return showErrorMessage(`IP 校验失败: ，当前访问 ${currentHost} IP未授权`);
     }
 
     // 过期检查
@@ -210,7 +212,6 @@ let init = async (token: string) => {
       ResonanceState,
       Constants,
       Bindings,
-      tokenManager  // ← 新增返回
     };
 
   } catch (err: any) {
@@ -220,6 +221,6 @@ let init = async (token: string) => {
 
 
 
-const SurocKit = { init, tokenManager };
+const SurocKit = { init };
 
 export default SurocKit;

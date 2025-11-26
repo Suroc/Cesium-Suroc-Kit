@@ -17,6 +17,7 @@ declare global {
 }
 
 import DrawTool from './drawtool';
+import { RectangleDrawer } from './RectangleDrawer';
 import settings from './settings';
 import { SurocSGP4, Slab, Sgp4, Elements, ResonanceState, Constants, Bindings } from './SurocSGP4_v1.0.5';
 import surocSGP4 from './SurocSGP4_v1.0.5';
@@ -205,6 +206,7 @@ let init = async (token: string) => {
       ...wrapModule(settings),
       ...wrapModule(surocSGP4),
       DrawTool,
+      RectangleDrawer,
       SurocSGP4,
       Slab,
       Sgp4,

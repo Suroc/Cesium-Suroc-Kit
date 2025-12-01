@@ -9,7 +9,7 @@ export interface RectangleStyle {
     themeColor?: string;       // 主色调 (默认天蓝色)
     themeColorDark?: string;   // 渐变暗部颜色
     capsuleColor?: string;     // 胶囊标签颜色
-    // 警告状态 (Warning) - <5km 或 >1000km
+    // 警告状态 (Warning) - <minLimit 或 >maxLimit
     warningColor?: string;     // 警告主色 (默认柔和红)
     warningColorDark?: string; // 警告暗部
 
@@ -17,6 +17,8 @@ export interface RectangleStyle {
     lineWidth?: number;        // 边框线宽
     cornerSize?: number;       // 顶点大小 (像素)
     font?: string;             // 标签字体 (Canvas格式)
+    minLimit?: number;         // 最小限制 (米)
+    maxLimit?: number;         // 最大限制 (米)
 }
 
 /**
@@ -50,8 +52,8 @@ export class RectangleDrawer {
     } | null = null;
 
     // 阈值常量
-    private readonly MIN_LIMIT = 5000;    // 5km
-    private readonly MAX_LIMIT = 1000000; // 1000km
+    private readonly MIN_LIMIT: number;    // 最小限制 (米)
+    private readonly MAX_LIMIT: number;    // 最大限制 (米)
 
     // 样式配置
     private style: RectangleStyle;
@@ -105,8 +107,14 @@ export class RectangleDrawer {
             lineWidth: 2,
             cornerSize: 12,
             font: 'bold 12px "Helvetica Neue", Helvetica, Arial, sans-serif',
+            minLimit: 5000,            // 默认5km
+            maxLimit: 1000000,          // 默认1000km
             ...options
         };
+
+        // 2. 初始化阈值常量
+        this.MIN_LIMIT = this.style.minLimit!;
+        this.MAX_LIMIT = this.style.maxLimit!;
 
         // 2. 预生成静态资源
         this.assets = {

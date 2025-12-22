@@ -19,6 +19,7 @@ export interface RectangleStyle {
     font?: string;             // 标签字体 (Canvas格式)
     minLimit?: number;         // 最小限制 (米)
     maxLimit?: number;         // 最大限制 (米)
+    activeLimit?: number;      // 默认绘制尺寸 (米)
 }
 
 /**
@@ -54,6 +55,7 @@ export class RectangleDrawer {
     // 阈值常量
     private readonly MIN_LIMIT: number;    // 最小限制 (米)
     private readonly MAX_LIMIT: number;    // 最大限制 (米)
+    private readonly ACTIVE_LIMIT: number; // 默认绘制尺寸 (米)
 
     // 样式配置
     private style: RectangleStyle;
@@ -109,12 +111,14 @@ export class RectangleDrawer {
             font: 'bold 12px "Helvetica Neue", Helvetica, Arial, sans-serif',
             minLimit: 5000,            // 默认5km
             maxLimit: 1000000,          // 默认1000km
+            activeLimit: 5000,          // 默认5km
             ...options
         };
 
         // 2. 初始化阈值常量
         this.MIN_LIMIT = this.style.minLimit!;
         this.MAX_LIMIT = this.style.maxLimit!;
+        this.ACTIVE_LIMIT = this.style.activeLimit!;
 
         // 2. 预生成静态资源
         this.assets = {
@@ -237,7 +241,7 @@ export class RectangleDrawer {
 
     private createEntities(centerCartesian: Cesium.Cartesian3) {
         const center = Cesium.Cartographic.fromCartesian(centerCartesian);
-        this.state = { center, width: 5000, height: 5000 };
+        this.state = { center, width: this.ACTIVE_LIMIT, height: this.ACTIVE_LIMIT };
 
         // 1. 矩形填充
         this.entities.fill = this.viewer.entities.add({

@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+
+<head>
+    <title>Cesium for ShaderToy(waterBox)</title>
+    <!-- Use correct character set. -->
+    <meta charset="utf-8" />
+    <!-- Tell IE to use the latest, best version. -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.2/animate.min.css" rel="stylesheet">
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <script type="text/javascript"
+        src="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Cesium.js"></script>
+    <style>
+        html,
+        body,
+        #sceneContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .cesium-performanceDisplay-defaultContainer {
+            left: 10px;
+            right: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="sceneContainer"></div>
+    <script>
+        let viewer;
+        /**
+         * 初始化viewer
+         */
+        const initViewer = async () => {
+            viewer = new Cesium.Viewer('sceneContainer', {
+                //组件的隐藏与显示
+                geocoder: false,
+                homeButton: false,
+                sceneModePicker: false,
+                baseLayerPicker: false,
+                navigationHelpButton: false,
+                animation: false,
+                shouldAnimate: true,
+                //creditContainer:"credit",
+                timeline: false,
+                fullscreenButton: false,
+                vrButton: false
+            });
+
+            viewer.scene.highDynamicRange = true;
+            viewer.scene.globe.depthTestAgainstTerrain = false;
+            viewer.scene.debugShowFramesPerSecond = true;
+            // 初始化水流体渲染Demo
+            new WaterBoxDemo(viewer, {})
+
+            // 调整相机位置到地面附近，以便看到地图细节
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(120.20998865783179, 30.13650797533829, 10000),
+                orientation: {
+                    heading: Cesium.Math.toRadians(0),
+                    pitch: Cesium.Math.toRadians(-60),
+                    roll: 0
+                }
+            });
+        }
+
+
+        // 公共变量
+        const Command = `
+const int textureSize = 256;
+// Render
+const vec3 backgroundColor = vec3(0.2);
+// Terrain
+const float transitionTime = 5.0;
+const float transitionPercent = 0.3;
+const int octaves = 7;
+// Water simulation
+const float attenuation = 0.995;
+const float strenght = 0.25;
+const float minTotalFlow = 0.0001;
+const float initialWaterLevel = 0.01;
+
+mat2 rot(in float ang) 
+{
+  return mat2(
+           cos(ang), -sin(ang),
+           sin(ang),  cos(ang));
+}
+
+// hash from Dave_Hoskins https://www.shadertoy.com/view/4djSRW
+float hash12(vec2 p)
+{
+   vec3 p3  = fract(vec3(p.xyx) * .1031);
+   p3 += dot(p3, p3.yzx + 33.33);
+   return fract((p3.x + p3.y) * p3.z);
+}
+
+float hash13(vec3 p3)
+{
+   p3  = fract(p3 * .1031);
+   p3 += dot(p3, p3.zyx + 31.32);
+   return fract((p3.x + p3.y) * p3.z);
+}
+
+// Box intersection by IQ https://iquilezles.org/articles/boxfunctions
+
+vec2 boxIntersection( in vec3 ro, in vec3 rd, in vec3 rad, out vec3 oN ) 
+{
+   vec3 m = 1.0 / rd;
+   vec3 n = m * ro;
+   vec3 k = abs(m) * rad;
+   vec3 t1 = -n - k;
+   vec3 t2 = -n + k;
+
+   float tN = max( max( t1.x, t1.y ), t1.z );
+   float tF = min( min( t2.x, t2.y ), t2.z );
+   
+   if( tN > tF || tF < 0.0) return vec2(-1.0); // no intersection
+   
+   oN = -sign(rd)*step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+
+   return vec2( tN, tF );
+}
+
+vec2 hitBox(vec3 orig, vec3 dir) {
+   const vec3 box_min = vec3(-0.5);
+   const vec3 box_max = vec3(0.5);
+   vec3 inv_dir = 1.0 / dir;
+   vec3 tmin_tmp = (box_min - orig) * inv_dir;
+   vec3 tmax_tmp = (box_max - orig) * inv_dir;
+   vec3 tmin = min(tmin_tmp, tmax_tmp);
+   vec3 tmax = max(tmin_tmp, tmax_tmp);
+   float t0 = max(tmin.x, max(tmin.y, tmin.z));
+   float t1 = min(tmax.x, min(tmax.y, tmax.z));
+   return vec2(t0, t1);
+}
+
+float Hash100( float p ) 
+{
+    // https://www.shadertoy.com/view/4djSRW - Dave Hoskins
+	vec2 p2 = fract(vec2(p) * vec2(4.438975,3.972973));
+    p2 += dot(p2.yx, p2.xy+19.19);
+	return fract(p2.x * p2.y);    
+	//return fract(sin(n)*43758.5453);
+}
+
+// Fog by IQ https://iquilezles.org/articles/fog
+
+vec3 applyFog( in vec3  rgb, vec3 fogColor, in float distance)
+{
+   float fogAmount = exp( -distance );
+   return mix( fogColor, rgb, fogAmount );
+}
+`;
+
+        const renderShaderSource = `
+     precision highp float;
+     precision highp sampler3D;
+     in vec3 vOrigin;
+     in vec3 vDirection;
+    uniform float iTime;
+    // Stockholms Ström
+    // by Peder Norrby / Trapcode in 2016
+    // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0
+    mat3 rotationMatrix(vec3 axis, float angle)
+    {
+     axis = normalize(axis);
+     float s = sin(angle);
+     float c = cos(angle);
+     float oc = 1.0 - c;
+     return mat3(oc * axis.x * axis.x + c,  oc * axis.x * axis.y - axis.z * s, oc * axis.z * axis.x + axis.y * s,
+      oc * axis.x * axis.y + axis.z * s, oc * axis.y * axis.y + c,  oc * axis.y * axis.z - axis.x * s,
+      oc * axis.z * axis.x - axis.y * s, oc * axis.y * axis.z + axis.x * s, oc * axis.z * axis.z + c );
+    }
+    //
+    // Description : Array and textureless GLSL 2D/3D/4D simplex
+    //   noise functions.
+    //  Author : Ian McEwan, Ashima Arts.
+    // Maintainer : ijm
+    //  Lastmod : 20110822 (ijm)
+    //  License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+    //   Distributed under the MIT License. See LICENSE file.
+    //   https://github.com/ashima/webgl-noise
+    //
+    vec3 mod289(vec3 x) {
+         return x - floor(x * (1.0 / 289.0)) * 289.0;
+    }
+    vec4 mod289(vec4 x) {
+        return x - floor(x * (1.0 / 289.0)) * 289.0;
+    }
+    vec4 permute(vec4 x) {
+        return mod289(((x*34.0)+1.0)*x);
+    }
+    vec4 taylorInvSqrt(vec4 r)
+    {
+         return 1.79284291400159 - 0.85373472095314 * r;
+    }
+    float noise(vec3 v)
+    {
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0) ;
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+        // First corner
+        vec3 i = floor(v + dot(v, C.yyy) );
+        vec3 x0 =  v - i + dot(i, C.xxx) ;
+        // Other corners
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min( g.xyz, l.zxy );
+        vec3 i2 = max( g.xyz, l.zxy );
+        //  x0 = x0 - 0.0 + 0.0 * C.xxx;
+        //  x1 = x0 - i1 + 1.0 * C.xxx;
+        //  x2 = x0 - i2 + 2.0 * C.xxx;
+        //  x3 = x0 - 1.0 + 3.0 * C.xxx;
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+        vec3 x3 = x0 - D.yyy;  // -1.0+3.0*C.x = -0.5 = -D.y
+        // Permutations
+        i = mod289(i);
+        vec4 p = permute( permute( permute(
+            i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+            + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+            + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+    // Gradients: 7x7 points over a square, mapped onto an octahedron.
+    // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+     float n_ = 0.142857142857; // 1.0/7.0
+     vec3 ns = n_ * D.wyz - D.xzx;
+     vec4 j = p - 49.0 * floor(p * ns.z * ns.z); // mod(p,7*7)
+     vec4 x_ = floor(j * ns.z);
+     vec4 y_ = floor(j - 7.0 * x_ ); // mod(j,N)
+     vec4 x = x_ *ns.x + ns.yyyy;
+     vec4 y = y_ *ns.x + ns.yyyy;
+     vec4 h = 1.0 - abs(x) - abs(y);
+     vec4 b0 = vec4( x.xy, y.xy );
+     vec4 b1 = vec4( x.zw, y.zw );
+     //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+     //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+     vec4 s0 = floor(b0)*2.0 + 1.0;
+     vec4 s1 = floor(b1)*2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+    vec3 p0 = vec3(a0.xy,h.x);
+    vec3 p1 = vec3(a0.zw,h.y);
+    vec3 p2 = vec3(a1.xy,h.z);
+    vec3 p3 = vec3(a1.zw,h.w);
+    //Normalise gradients
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+    p0 *= norm.x;
+    p1 *= norm.y;
+    p2 *= norm.z;
+    p3 *= norm.w;
+    // Mix final noise value
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+        dot(p2,x2), dot(p3,x3) ) );
+    }
+    /*
+    mat4 rotationMatrix(vec3 axis, float angle)
+    {
+     axis = normalize(axis);
+     float s = sin(angle);
+     float c = cos(angle);
+     float oc = 1.0 - c;
+     return mat4(oc * axis.x * axis.x + c,  oc * axis.x * axis.y - axis.z * s,oc * axis.z * axis.x + axis.y * s,0.0,
+      oc * axis.x * axis.y + axis.z * s,oc * axis.y * axis.y + c,  oc * axis.y * axis.z - axis.x * s,0.0,
+      oc * axis.z * axis.x - axis.y * s,oc * axis.y * axis.z + axis.x * s,oc * axis.z * axis.z + c,  0.0,
+      0.0,    0.0,    0.0,    1.0);
+    }*/
+    float fnoise( vec3 p)
+    {
+     mat3 rot = rotationMatrix( normalize(vec3(0.0,0.0, 1.0)), 0.5*iTime);
+     mat3 rot2 = rotationMatrix( normalize(vec3(0.0,0.0, 1.0)), 0.3*iTime);
+     float sum = 0.0;
+     vec3 r = rot*p;
+     float add = noise(r);
+     float msc = add+0.7;
+     msc = clamp(msc, 0.0, 1.0);
+     sum += 0.6*add;
+     p = p*2.0;
+     r = rot*p;
+     add = noise(r);
+     add *= msc;
+     sum += 0.5*add;
+     msc *= add+0.7;
+     msc = clamp(msc, 0.0, 1.0);
+     p.xy = p.xy*2.0;
+     p = rot2 *p;
+     add = noise(p);
+     add *= msc;
+     sum += 0.25*abs(add);
+     msc *= add+0.7;
+     msc = clamp(msc, 0.0, 1.0);
+     p = p*2.0;
+     // p = p*rot;
+     add = noise(p);// + vec3(iTime*5.0, 0.0, 0.0));
+     add *= msc;
+     sum += 0.125*abs(add);
+     msc *= add+0.2;
+     msc = clamp(msc, 0.0, 1.0);
+     p = p*2.0;
+     // p = p*rot;
+     add = noise(p);
+     add *= msc;
+     sum += 0.0625*abs(add);
+     //msc *= add+0.7;
+     //msc = clamp(msc, 0.0, 1.0);
+     return sum*0.516129;
+    }
+    float getHeight(vec3 p) // x,z,time
+    {
+        return 0.3-0.5*fnoise( vec3(0.5*(p.x + 0.0*iTime), 0.5*p.z,0.4*iTime) );
+    }
+    #define box_y 1.0
+    #define box_x 2.0
+    #define box_z 2.0
+    #define bg vec4(0.0, 0.0, 0.0, 0.0)
+    #define step 0.3
+    #define red vec4(1.0, 0.0, 0.0, 0.0)
+    #define PI_HALF 1.5707963267949
+    vec4 getSky(vec3 rd)
+    {
+     if (rd.y > 0.3) return vec4(0.5, 0.8, 1.5, 1.0); // bright sky
+     if (rd.y < 0.0) return vec4(0.0, 0.2, 0.4, 1.0); // no reflection from below
+     if (rd.z > 0.9 && rd.x > 0.3) {
+      if (rd.y > 0.2) return 1.5*vec4(2.0, 1.0, 1.0, 1.0); // red houses
+      return 1.5*vec4(2.0, 1.0, 0.5, 1.0); // orange houses
+     } else return vec4(0.5, 0.8, 1.5, 1.0 ); // bright sky
+    }
+    vec4 shadeBox(vec3 normal, vec3 pos, vec3 rd)
+    {
+     float deep = 1.0+0.5*pos.y;
+     vec4 col = deep*0.4*vec4(0.0, 0.3, 0.4, 1.0);
+     return col;
+    }
+    vec4 shade(vec3 normal, vec3 pos, vec3 rd)
+    {
+     float ReflectionFresnel = 0.99;
+     float fresnel = ReflectionFresnel*pow( 1.0-clamp(dot(-rd, normal), 0.0, 1.0), 5.0) + (1.0-ReflectionFresnel);
+     vec3 refVec = reflect(rd, normal);
+     vec4 reflection = getSky(refVec);
+     //vec3 sunDir = normalize(vec3(-1.0, -1.0, 0.5));
+     //float intens = 0.5 + 0.5*clamp( dot(normal, sunDir), 0.0, 1.0);
+     float deep = 1.0+0.5*pos.y;
+     vec4 col = fresnel*reflection;
+     col += deep*0.4*vec4(0.0, 0.3, 0.4, 1.0);
+     return clamp(col, 0.0, 1.0);
+    }
+    vec4 intersect_box(vec3 ro, vec3 rd) // no top and bottom, just sides!
+    {
+     //vec3 normal;
+     float t_min = 1000.0;
+     vec3 t_normal;
+     // x = -box_x plane
+     float t = (-box_x -ro.x) / rd.x;
+     vec3 p = ro + t*rd;
+     if (p.y > -box_y && p.z < box_z && p.z > -box_z) {
+      t_normal = vec3(-1.0, 0.0, 0.0);
+      t_min = t;
+      //if (dot(normal, rd) > PI_HALF ) return red;//shadeBox(normal, p, rd);
+     }
+     // x = +box_x plane
+     //box_x = ro.x + t*rd.x
+     //t*rd.x = box_x - ro.x
+    // t = (box_x - ro.x)/rd.x
+     t = (box_x -ro.x) / rd.x;
+     p = ro + t*rd;
+     if (p.y > -box_y && p.z < box_z && p.z > -box_z) {
+      if (t < t_min) {
+     t_normal = vec3(1.0, 0.0, 0.0);
+     t_min = t;
+      }
+     }
+     // z = -box_z plane
+     t = (-box_z -ro.z) / rd.z;
+     p = ro + t*rd;
+     if (p.y > -box_y && p.x < box_x && p.x > -box_x) {
+      if (t < t_min) {
+     t_normal = vec3(0.0, 0.0, -1.0);
+     t_min = t;
+      }
+     }
+     // z = +box_z plane
+     t = (box_z -ro.z) / rd.z;
+     p = ro + t*rd;
+     if (p.y > -box_y && p.x < box_x && p.x > -box_x) {
+      if (t < t_min) {
+     t_normal = vec3(0.0, 0.0, 1.0);
+     t_min = t;
+      }
+     }
+     if (t_min < 1000.0) return shadeBox(t_normal, ro + t_min*rd, rd);
+     return bg;
+    }
+    vec4 trace_heightfield( vec3 ro, vec3 rd)
+    {
+     // intersect with max h plane, y=1
+     //ro.y + t*rd.y = 1.0;
+     //t*rd.y = 1.0 - ro.y;
+     float t = (1.0 - ro.y) / rd.y;
+     if (t<0.0) return red;
+     vec3 p = ro + t*rd;
+     if (p.x < -2.0 && rd.x <= 0.0) return bg;
+     if (p.x > 2.0 && rd.x >= 0.0) return bg;
+     if (p.z < -2.0 && rd.z <= 0.0) return bg;
+     if (p.z > 2.0 && rd.z >= 0.0) return bg;
+     //float h = getHeight(p);
+     float h, last_h;
+     bool not_found = true;
+     vec3 last_p = p;
+     for (int i=0; i<20; i++) {
+      p += step*rd;
+      h = getHeight(p);
+      if (p.y < h) {not_found = false; break;} // we stepped through
+      last_h = h;
+      last_p = p;
+     }
+     if (not_found) return bg;
+    // refine interection
+     float dh2 = h - p.y;
+     float dh1 = last_p.y - last_h;
+    p = last_p + rd*step/(dh2/dh1+1.0);
+     // box shenanigans
+     if (p.x < -2.0) {
+      if (rd.x <= 0.0) return bg;
+      return intersect_box(ro, rd);
+     }
+     if (p.x >2.0) {
+      if (rd.x >= 0.0) return bg;
+      return intersect_box(ro, rd);
+     }
+     if (p.z < -2.0) {
+      if (rd.z <= 0.0) return bg;
+      return intersect_box(ro, rd);
+     }
+     if (p.z >2.0) {
+      if (rd.z >= 0.0) return bg;
+      return intersect_box(ro, rd);
+     }
+     vec3 pdx = p + vec3( 0.01, 0.0,0.00);
+     vec3 pdz = p + vec3( 0.00, 0.0,0.01);
+     float hdx = getHeight( pdx );
+     float hdz = getHeight( pdz );
+     h = getHeight( p );
+     p.y = h;
+     pdx.y = hdx;
+     pdz.y = hdz;
+     vec3 normal = normalize(cross( p-pdz, p-pdx)) ;
+     return shade(normal, p, rd);
+    }
+    // Shadertoy camera code by iq
+     mat3 setCamera( in vec3 ro, in vec3 ta, float cr )
+     {
+      vec3 cw = normalize(ta-ro);
+      vec3 cp = vec3(sin(cr), cos(cr),0.0);
+      vec3 cu = normalize( cross(cw,cp) );
+      vec3 cv = normalize( cross(cu,cw) );
+      return mat3( cu, cv, cw );
+     }
+     void main(){
+        vec3 rayDir = normalize( vDirection );
+        vec4 color =trace_heightfield( vOrigin, rayDir ) ;
+        if(color.a==0.)discard;
+        out_FragColor =color;
+        out_FragColor.a =1.0;
+     }
+`;
+
+        /**
+         * @description 自定义DC
+         */
+        class CustomPrimitive {
+            constructor(options) {
+                this.commandType = options.commandType;
+
+                this.geometry = options.geometry;
+                this.attributeLocations = options.attributeLocations;
+                this.primitiveType = options.primitiveType;
+
+                this.uniformMap = options.uniformMap;
+
+                this.vertexShaderSource = options.vertexShaderSource;
+                this.fragmentShaderSource = options.fragmentShaderSource;
+
+                this.rawRenderState = options.rawRenderState;
+                this.framebuffer = options.framebuffer;
+
+                this.outputTexture = options.outputTexture;
+
+                this.autoClear = Cesium.defaultValue(options.autoClear, false);
+                this.preExecute = options.preExecute;
+
+                this.modelMatrix = Cesium.defaultValue(options.modelMatrix, Cesium.Matrix4.IDENTITY);
+                this.show = true;
+                this.commandToExecute = undefined;
+                this.clearCommand = undefined;
+                if (this.autoClear) {
+                    this.clearCommand = new Cesium.ClearCommand({
+                        color: new Cesium.Color(0.0, 0.0, 0.0, 0.0),
+                        depth: 1.0,
+                        framebuffer: this.framebuffer,
+                        pass: Cesium.Pass.OPAQUE
+                    });
+                }
+            }
+
+            createCommand(context) {
+                switch (this.commandType) {
+                    case 'Draw': {
+                        let vertexArray = Cesium.VertexArray.fromGeometry({
+                            context: context,
+                            geometry: this.geometry,
+                            attributeLocations: this.attributeLocations,
+                            bufferUsage: Cesium.BufferUsage.STATIC_DRAW,
+                        });
+
+                        let shaderProgram = Cesium.ShaderProgram.fromCache({
+                            context: context,
+                            attributeLocations: this.attributeLocations,
+                            vertexShaderSource: this.vertexShaderSource,
+                            fragmentShaderSource: this.fragmentShaderSource
+                        });
+
+                        let renderState = Cesium.RenderState.fromCache(this.rawRenderState);
+                        console.log("this.rawRenderState", this.rawRenderState);
+                        console.log("renderState", renderState);
+
+                        return new Cesium.DrawCommand({
+                            owner: this,
+                            vertexArray: vertexArray,
+                            primitiveType: this.primitiveType,
+                            uniformMap: this.uniformMap,
+                            modelMatrix: this.modelMatrix,
+                            shaderProgram: shaderProgram,
+                            framebuffer: this.framebuffer,
+                            renderState: renderState,
+                            pass: Cesium.Pass.TRANSLUCENT
+                        });
+                    }
+                    case 'Compute': {
+                        return new Cesium.ComputeCommand({
+                            owner: this,
+                            fragmentShaderSource: this.fragmentShaderSource,
+                            uniformMap: this.uniformMap,
+                            outputTexture: this.outputTexture,
+                            persists: true
+                        });
+                    }
+                }
+            }
+
+            setGeometry(context, geometry) {
+                this.geometry = geometry;
+                let vertexArray = Cesium.VertexArray.fromGeometry({
+                    context: context,
+                    geometry: this.geometry,
+                    attributeLocations: this.attributeLocations,
+                    bufferUsage: Cesium.BufferUsage.STATIC_DRAW,
+                });
+                this.commandToExecute.vertexArray = vertexArray;
+            }
+
+            update(frameState) {
+                if (!this.show) {
+                    return;
+                }
+
+                if (!Cesium.defined(this.commandToExecute)) {
+                    this.commandToExecute = this.createCommand(frameState.context);
+                }
+
+                if (Cesium.defined(this.preExecute)) {
+                    this.preExecute();
+                }
+
+                if (Cesium.defined(this.clearCommand)) {
+                    frameState.commandList.push(this.clearCommand);
+                }
+                frameState.commandList.push(this.commandToExecute);
+            }
+
+            isDestroyed() {
+                return false;
+            }
+
+            destroy() {
+                if (Cesium.defined(this.commandToExecute)) {
+                    this.commandToExecute.shaderProgram = this.commandToExecute.shaderProgram && this.commandToExecute.shaderProgram.destroy();
+                }
+                return Cesium.destroyObject(this);
+            }
+        }
+        class WaterBoxDemo {
+
+            constructor(viewer) {
+
+                this._viewer = viewer;
+                this.initWaterBox();
+            }
+
+            initWaterBox() {
+                const modelMatrix = generateModelMatrix([120.20998865783179, 30.13650797533829, 10], [90, 0, 0], [100, 100, 100])
+                const boxGeometry = Cesium.BoxGeometry.fromDimensions({
+                    vertexFormat: Cesium.VertexFormat.POSITION_AND_ST,
+                    dimensions: new Cesium.Cartesian3(5, 5, 5),
+                });
+                const geometry = Cesium.BoxGeometry.createGeometry(boxGeometry);
+                const attributelocations = Cesium.GeometryPipeline.createAttributeLocations(geometry);
+                const waterBoxCommand = new CustomPrimitive({
+                    commandType: 'Draw',
+                    uniformMap: {
+                        iTime: () => { return time },
+                    },
+                    geometry: geometry,
+                    modelMatrix: modelMatrix,
+                    attributeLocations: attributelocations,
+                    vertexShaderSource: new Cesium.ShaderSource({
+                        sources: [
+                            `
+                            in vec3 position3DHigh;
+                            in vec3 position3DLow;
+                            in vec3 position;
+                            in vec2 st;
+                            out vec3 vOrigin;
+                            out vec3 vDirection;
+                            out vec2 v_st;
+                            void main()
+                            {    
+                                vec4 p = vec4(position3DHigh + position3DLow, 1.);
+                                vOrigin = czm_encodedCameraPositionMCHigh + czm_encodedCameraPositionMCLow;
+                                vDirection = position - vOrigin;
+                                v_st = st;
+                                gl_Position = czm_modelViewProjection * vec4(position,1.0);
+                            }
+                           `
+                        ]
+                    }),
+                    fragmentShaderSource: new Cesium.ShaderSource({
+                        sources: [Command + renderShaderSource]
+                    })
+                })
+                let time = 1.0
+                let frame = 0.;
+                this._viewer.scene.postRender.addEventListener(() => {
+
+                    const now = performance.now();
+                    this.deltaTime = (now - this.lastUpdateTime) / 1000.0; // 转换为秒
+                    this.lastUpdateTime = now;
+                    time = now / 1000.;
+                    frame += 0.02;
+                })
+                this._viewer.scene.primitives.add(waterBoxCommand);
+            }
+        }
+        /**
+         * 生成矩阵
+         * @param {*} position 
+         * @param {*} rotation 
+         * @param {*} scale 
+         * @returns 
+         */
+        const generateModelMatrix = (position = [0, 0, 0], rotation = [0, 0, 0], scale = [1, 1, 1]) => {
+            const rotationX = Cesium.Matrix4.fromRotationTranslation(
+                Cesium.Matrix3.fromRotationX(Cesium.Math.toRadians(rotation[0])));
+
+            const rotationY = Cesium.Matrix4.fromRotationTranslation(
+                Cesium.Matrix3.fromRotationY(Cesium.Math.toRadians(rotation[1])));
+
+            const rotationZ = Cesium.Matrix4.fromRotationTranslation(
+                Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(rotation[2])));
+            if (!(position instanceof Cesium.Cartesian3)) {
+                position = Cesium.Cartesian3.fromDegrees(...position)
+            }
+            const enuMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+            Cesium.Matrix4.multiply(enuMatrix, rotationX, enuMatrix);
+            Cesium.Matrix4.multiply(enuMatrix, rotationY, enuMatrix);
+            Cesium.Matrix4.multiply(enuMatrix, rotationZ, enuMatrix);
+            const scaleMatrix = Cesium.Matrix4.fromScale(new Cesium.Cartesian3(...scale));
+            const modelMatrix = Cesium.Matrix4.multiply(enuMatrix, scaleMatrix, new Cesium.Matrix4());
+
+            return modelMatrix;
+        }
+
+        const main = async () => {
+            await initViewer();
+        };
+
+        window.onload = main;
+    </script>
+</body>
+
+</html>

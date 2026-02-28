@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <title>Cesium 离屏渲染 (WebGL 2.0 适配)</title>
+    <meta charset="utf-8" />
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Cesium.js"></script>
+    <style>
+        html,
+        body,
+        #sceneContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="sceneContainer"></div>
+    <script>
+        let viewer;
+
+        const initViewer = async () => {
+            viewer = new Cesium.Viewer('sceneContainer', {
+                geocoder: false, homeButton: false, sceneModePicker: false,
+                baseLayerPicker: false, navigationHelpButton: false, animation: false,
+                timeline: false, fullscreenButton: false, vrButton: false,
+            });
+
+            // 使用 OSM 避免 Bing Key 问题
+            viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/'
+            }));
+
+            viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(116.39, 39.9, 500000)
+            });
+        };
+
+        class TestoffscreenPrimitive {
+            constructor(viewer) {
+                this.viewer = viewer;
+                this.drawCommand = undefined;
+            }
+
+            initialize(frameState) {
+                const context = frameState.context;
+
+                // 确保底层 Framebuffer 已经创建
+                const view = this.viewer.scene._view;
+                if (!view || !view.globeDepth || !view.globeDepth.framebuffer) return;
+
+                /**
+                 * 修复关键点说明：
+                 * 1. 必须手动声明 uniform sampler2D colorTexture; 
+                 * 2. 使用 in 关键字接收纹理坐标
+                 * 3. 使用 texture() 函数代替 texture2D()
+                 */
+                const fs = `
+                    uniform sampler2D colorTexture; 
+                    in vec2 v_textureCoordinates;
+                    void main() {
+                        out_FragColor = texture(colorTexture, v_textureCoordinates);
+                    }
+                `;
+
+                this.drawCommand = context.createViewportQuadCommand(fs, {
+                    uniformMap: {
+                        colorTexture: () => {
+                            // 实时获取场景的颜色缓冲区纹理
+                            return this.viewer.scene._view.globeDepth.framebuffer._colorTextures[0];
+                        },
+                    },
+                    pass: Cesium.Pass.OVERLAY, // 放在最上层渲染
+                    renderState: Cesium.RenderState.fromCache({
+                        depthTest: { enabled: false },
+                        blending: Cesium.BlendingState.ALPHA_BLEND
+                    })
+                });
+            }
+
+            update(frameState) {
+                // 如果尚未初始化指令，且底层资源已就绪，则进行初始化
+                if (!this.drawCommand) {
+                    this.initialize(frameState);
+                    if (!this.drawCommand) return;
+                }
+
+                // 动态计算视口位置（右下角画中画）
+                const screenWidth = frameState.context.drawingBufferWidth;
+                const screenHeight = frameState.context.drawingBufferHeight;
+                const size = Math.min(screenWidth, screenHeight) * 0.3; // 占据屏幕 30%
+
+                const viewport = new Cesium.BoundingRectangle(
+                    screenWidth - size - 10, // 右侧偏移 10px
+                    10,                     // 底部偏移 10px
+                    size,
+                    size
+                );
+
+                // 更新渲染指令的视口
+                this.drawCommand.renderState.viewport = viewport;
+
+                // 将绘图指令推入当前的渲染列表
+                frameState.commandList.push(this.drawCommand);
+            }
+        }
+
+        window.onload = async () => {
+            await initViewer();
+
+            // 稍作延迟，确保 Cesium 内部的 globeDepth 资源渲染几帧后被初始化
+            setTimeout(() => {
+                const primitive = new TestoffscreenPrimitive(viewer);
+                viewer.scene.primitives.add(primitive);
+                console.log("离屏渲染 Primitive 已就绪");
+            }, 2000);
+        };
+    </script>
+</body>
+
+</html>

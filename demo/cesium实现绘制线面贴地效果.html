@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Cesium 绘图</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html,
+        body,
+        #app,
+        #map {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app">
+        <div class="controls">
+            <el-button type="primary" size="mini" @click="drawGeometry('polygon')">绘制面</el-button>
+            <el-button type="primary" size="mini" @click="drawGeometry('polyline')">绘制线</el-button>
+            <el-button type="danger" size="mini" @click="clearAll">清除</el-button>
+            <span style="color: white; margin-left: 10px; font-size: 12px;">左键点击加点，双击结束绘制</span>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/vue@2.6.14/dist/vue.min.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.108/Build/Cesium/Cesium.js"></script>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    viewer: null,
+                    handler: null,
+                    positions: [],
+                    moveposition: [],
+                    activeShape: null,
+                    floatingPoint: null
+                }
+            },
+            methods: {
+                init3dmap() {
+                    // 不使用 Ion Token，改用开源瓦片
+                    this.viewer = new Cesium.Viewer("map", {
+                        geocoder: false, homeButton: false, sceneModePicker: false,
+                        baseLayerPicker: false, navigationHelpButton: false,
+                        animation: false, timeline: false, fullscreenButton: false,
+                        infoBox: false, selectionIndicator: false,
+                        // 使用开源的 OpenStreetMap，保证在无 Token 时也能看到图
+                        imageryProvider: new Cesium.OpenStreetMapImageryProvider({
+                            url: 'https://a.tile.openstreetmap.org/'
+                        })
+                    });
+
+                    // 显式设置默认地形（椭球体），防止贴地属性导致消失
+                    this.viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+
+                    // 开启深度检测，提升拾取精度
+                    this.viewer.scene.globe.depthTestAgainstTerrain = true;
+
+                    this.viewer.scene.camera.setView({
+                        destination: Cesium.Cartesian3.fromDegrees(116.39, 39.9, 5000)
+                    });
+                },
+
+                // 坐标拾取保底方案
+                getCartesian(position) {
+                    // 优先拾取场景深度坐标
+                    let cartesian = this.viewer.scene.pickPosition(position);
+                    if (!Cesium.defined(cartesian)) {
+                        // 如果 pickPosition 失败（黑屏区域），拾取椭球体表面坐标
+                        let ray = this.viewer.camera.getPickRay(position);
+                        cartesian = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+                    }
+                    return cartesian;
+                },
+
+                drawGeometry(drawMode) {
+                    this.clearCurrent();
+                    let self = this;
+                    this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+                    // 屏蔽双击
+                    this.viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+                    // 1. 左键单击：确认点
+                    this.handler.setInputAction((event) => {
+                        let cartesian = self.getCartesian(event.position);
+                        if (!Cesium.defined(cartesian)) return;
+
+                        if (self.positions.length === 0) {
+                            // 初始动态图形
+                            self.activeShape = self.createShape(drawMode, true);
+                        }
+
+                        self.positions.push(cartesian);
+                        self.moveposition.push(cartesian);
+
+                        // 添加固定的点节点
+                        self.viewer.entities.add({
+                            position: cartesian,
+                            point: { pixelSize: 8, color: Cesium.Color.BLUE, outlineColor: Cesium.Color.WHITE, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY }
+                        });
+                    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+                    // 2. 鼠标移动：拉伸效果
+                    this.handler.setInputAction((event) => {
+                        let cartesian = self.getCartesian(event.endPosition);
+                        if (!Cesium.defined(cartesian)) return;
+
+                        if (self.positions.length > 0) {
+                            if (self.moveposition.length === self.positions.length) {
+                                self.moveposition.push(cartesian);
+                            } else {
+                                self.moveposition.splice(self.moveposition.length - 1, 1, cartesian);
+                            }
+                        }
+                    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+                    // 3. 左键双击：结束
+                    this.handler.setInputAction((event) => {
+                        if (self.positions.length < 2) return;
+
+                        // 移除动态图形，绘制最终静态图形
+                        this.viewer.entities.remove(self.activeShape);
+                        self.createShape(drawMode, false);
+
+                        self.clearCurrent();
+                        self.$message.success('绘制成功');
+                    }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+                },
+
+                createShape(drawMode, isDynamic) {
+                    let self = this;
+                    let posSource = isDynamic ? new Cesium.CallbackProperty(() => {
+                        if (drawMode === 'polygon') return new Cesium.PolygonHierarchy(self.moveposition);
+                        return self.moveposition;
+                    }, false) : (drawMode === 'polygon' ? new Cesium.PolygonHierarchy(self.positions) : self.positions);
+
+                    if (drawMode === "polygon") {
+                        return this.viewer.entities.add({
+                            polygon: {
+                                hierarchy: posSource,
+                                material: Cesium.Color.RED.withAlpha(0.5),
+                                outline: true,
+                                outlineColor: Cesium.Color.WHITE,
+                                // 贴地设置，如果没地形，会自动贴在椭球体上
+                                classificationType: Cesium.ClassificationType.BOTH
+                            }
+                        });
+                    } else {
+                        return this.viewer.entities.add({
+                            polyline: {
+                                positions: posSource,
+                                width: 4,
+                                material: Cesium.Color.YELLOW,
+                                clampToGround: true // 贴地
+                            }
+                        });
+                    }
+                },
+
+                clearCurrent() {
+                    if (this.handler) { this.handler.destroy(); this.handler = null; }
+                    this.positions = [];
+                    this.moveposition = [];
+                    this.activeShape = null;
+                },
+
+                clearAll() {
+                    this.clearCurrent();
+                    this.viewer.entities.removeAll();
+                }
+            },
+            mounted() {
+                this.init3dmap();
+            }
+        });
+    </script>
+</body>
+
+</html>
